@@ -188,6 +188,7 @@ $if (android || linux || freebsd || openbsd || netbsd || dragonfly || solaris ||
 	__global g_present_on_demand = false
 	__global g_text_values = map[string]string{}
 	__global g_clipboard = &clipboard.Clipboard(unsafe { nil })
+	__global g_clipboard_override = ?TextClipboard(none)
 	__global g_text_props = map[string]string{}
 	__global g_text_editors = map[string]TextEditor{}
 	__global g_text_kinds = map[string]Kind{}
@@ -2113,8 +2114,10 @@ $if (android || linux || freebsd || openbsd || netbsd || dragonfly || solaris ||
 			}
 			.x {
 				selected := editor_selected_text(editor)
-				if selected.len > 0 {
-					cb.copy(selected)
+				// A cut that could not reach the clipboard must not destroy the
+				// text; the Windows backend returns false when it cannot lock the
+				// clipboard or SetClipboardData fails.
+				if selected.len > 0 && cb.copy(selected) {
 					editor.replace_selection('')
 					replace_text_value(id, editor.text)
 					replace_text_editor(id, editor)
@@ -2139,11 +2142,23 @@ $if (android || linux || freebsd || openbsd || netbsd || dragonfly || solaris ||
 		return true
 	}
 
+	// TextClipboard is the part of clipboard.Clipboard the shortcuts use. Tests
+	// install their own through g_clipboard_override to exercise failed copies
+	// and pasted text without touching the system clipboard.
+	interface TextClipboard {
+	mut:
+		copy(text string) bool
+		paste() string
+	}
+
 	// system_clipboard returns the process-wide clipboard, created on first use.
 	// The instance must outlive each copy: on X11 the clipboard owns a window
 	// that holds CLIPBOARD selection ownership, and destroying it right after
 	// a copy hands the selection back to nobody.
-	fn system_clipboard() &clipboard.Clipboard {
+	fn system_clipboard() TextClipboard {
+		if override := g_clipboard_override {
+			return override
+		}
 		if isnil(g_clipboard) {
 			g_clipboard = clipboard.new()
 		}

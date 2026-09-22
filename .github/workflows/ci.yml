@@ -100,6 +100,10 @@ jobs:
           v run ui2/c/build.vsh test ${{ matrix.custom && '-d ui2_custom_rendering' || '' }}
           v run ui2/c/build.vsh example ${{ matrix.custom && '-d ui2_custom_rendering' || '' }}
 
+      - name: Test immediate text clipboard shortcuts
+        if: runner.os == 'Linux' || matrix.custom
+        run: v ${{ matrix.custom && '-d ui2_custom_rendering' || '' }} test ui2/ui/ui_text_clipboard_immediate_test.v
+
       - name: Build all examples
         run: v run ui2/examples/build_examples.vsh ${{ matrix.custom && '-d ui2_custom_rendering' || '' }}
 
