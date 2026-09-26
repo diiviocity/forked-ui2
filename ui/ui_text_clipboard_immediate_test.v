@@ -49,6 +49,7 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 		g_text_kinds = {
 			'field': kind
 		}
+		g_text_secure = map[string]bool{}
 		g_active_fields = {
 			'field': true
 		}
@@ -169,6 +170,40 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 		handle_key_down(.v, primary_modifier())
 		assert text('field') == 'first\nsecond\n'
 		assert clipboard_test_events == ['changed']
+		finish_clipboard_test()
+	}
+
+	fn test_secure_fields_never_export_their_contents() {
+		// A password field masks only at draw time, so the editor holds the
+		// plaintext; copy and cut must be consumed without reaching the clipboard.
+		reset_clipboard_test('secret', .text_field)
+		g_text_secure['field'] = true
+		mut fake := &FakeClipboard{text: 'pasted'}
+		g_clipboard_override = fake
+		select_field_range(0, 6)
+		handle_key_down(.c, primary_modifier())
+		handle_key_down(.x, primary_modifier())
+		assert fake.copies == 0
+		assert fake.text == 'pasted'
+		assert text('field') == 'secret'
+		cut_editor := g_text_editors['field'] or { panic('missing editor') }
+		assert cut_editor.selection.anchor == 0
+		assert cut_editor.selection.caret == 6
+		assert clipboard_test_events == []
+
+		// Paste stays available so the field can still be filled from a manager.
+		handle_key_down(.v, primary_modifier())
+		assert text('field') == 'pasted'
+		assert clipboard_test_events == ['changed']
+		finish_clipboard_test()
+
+		// The same field id without the flag copies as usual.
+		reset_clipboard_test('secret', .text_field)
+		mut plain := &FakeClipboard{}
+		g_clipboard_override = plain
+		select_field_range(0, 6)
+		handle_key_down(.c, primary_modifier())
+		assert plain.text == 'secret'
 		finish_clipboard_test()
 	}
 
