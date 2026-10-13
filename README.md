@@ -249,6 +249,58 @@ Button {
 }
 ```
 
+When the button needs arbitrary content rather than a single caption, compose
+it from a `Rectangle` (or `View`) and opt the container into button activation
+with `button_behavior: true`. The whole rectangle is the activation target;
+noninteractive children such as its `Label` do not block the tap:
+
+```vml
+Rectangle {
+    id: save_card
+    button_behavior: true
+    on_tap: app.save()
+    x: 20
+    y: 20
+    width: 180
+    height: 56
+    background: #2563EB
+    corner_radius: 8
+    cursor: "pointing_hand"
+
+    Label {
+        text: "Save changes"
+        x: 16
+        y: 16
+        width: 148
+        height: 24
+        align: center
+        color: #FFFFFF
+        bold: true
+    }
+}
+```
+
+`button_behavior` emits the ordinary `on_tap` action once when a press starts
+on the element and is released inside without becoming a drag or scroll
+gesture. It also gives the composite the default accessibility role `button`
+and derives its accessibility label from the first visible, noninteractive
+descendant with a label or text; set `accessibility_role` or
+`accessibility_label` explicitly to override those defaults.
+
+This adds activation semantics without requesting a native bezel or pressed
+visuals—the rectangle and its children remain application-drawn. The native
+Windows backend exposes the composite as a focusable button to accessibility
+tools and supports Enter/Space activation; the other renderers do not add
+native keyboard focus treatment. Use `Button` when a platform-drawn bezel and
+pressed state are required.
+
+This is deliberately separate from `clickable: true`. A clickable view is a
+low-level pointer surface that reports `pointer:down:...` and `pointer:up:...`
+events (and can be combined with `draggable`) for code that needs coordinates
+or gesture phases. Use `button_behavior` for a normal action-bearing composite
+control. If both flags are set, the surface emits the raw pointer phases and
+then its ordinary action after a successful tap.
+
 To reuse that style, put the defaults in a sibling VML module. `PrimaryButton`
 can live in `PrimaryButton.vml` or the conventional snake-case
 `primary_button.vml`:
@@ -281,6 +333,49 @@ Screen {
         x: 20
         y: 20
         width: 120
+    }
+}
+```
+
+A reusable composite can put only the interactive surface in its module and
+accept its visible content as instance children. For example,
+`action_surface.vml` can contain:
+
+```vml
+module ActionSurface
+
+Rectangle {
+    button_behavior: true
+    height: 56
+    background: #2563EB
+    corner_radius: 8
+}
+```
+
+The importing document supplies the action and any combination of labels,
+images, or decorative rectangles:
+
+```vml
+import ActionSurface
+
+Screen {
+    ActionSurface {
+        id: save_card
+        on_tap: app.save()
+        x: 20
+        y: 20
+        width: 180
+
+        Label {
+            text: "Save changes"
+            x: 16
+            y: 16
+            width: save_card.width - 32
+            height: 24
+            align: center
+            color: #FFFFFF
+            bold: true
+        }
     }
 }
 ```
@@ -333,6 +428,33 @@ A button emits its `id` by default. Wrap it with `with_action` when its lookup
 identity and action name should differ; `button_with_image`, `with_tooltip`, and
 `with_native_style` can be composed in the same way.
 
+For arbitrary child elements, use `button_view` instead. Child frames are
+relative to the view, just as they are for an ordinary `view`:
+
+```v
+fn save_card(id string, action string, frame ui2.Rect) ui2.Element {
+    caption := ui2.label(
+        '${id}_caption',
+        'Save changes',
+        ui2.rect(16, 16, frame.width - 32, 24),
+        ui2.TextStyle{ color: 0xffffff, bold: true, align: .center },
+    )
+    return ui2.with_action(
+        ui2.button_view(
+            id,
+            frame,
+            ui2.BoxStyle{ bg: 0x2563eb, radius: 8 },
+            [caption],
+        ),
+        action,
+    )
+}
+```
+
+`with_button_behavior(existing_view)` is the modifier form when the composite
+already exists. `button_view` and `with_button_behavior` leave the raw
+`clickable` flag unset.
+
 ## Backend capabilities
 
 Call `control_support(kind)` to query support. macOS implements every shared
@@ -383,7 +505,9 @@ its text area is plain-text, so those two controls report `partial` support.
 Shared state includes `hidden`, `enabled`, `accessibility_role`,
 `accessibility_label`, and `accessibility_value`. Native backends expose these
 through AppKit/UIKit. Standard Windows controls expose their native name and
-value; explicit Windows accessibility overrides are not yet implemented.
+value; `button_behavior` views also expose a native button role, generated
+label, keyboard focus, and accessibility activation. Other explicit Windows
+accessibility role/value overrides are not yet implemented.
 `autocorrect` and `padding_left` configure applicable mobile text inputs.
 
 ## Visual IDE
@@ -595,6 +719,39 @@ drawn in the same text still work. `ClickCounter` and `text_word_range` cover
 double-click word selection, and `text_column_at_x` maps an x offset to a
 column given a prefix-width function.
 
+## Scrolling
+
+A `Scroll` element scrolls over its children, vertically unless told otherwise.
+`scroll_mode`, named after vlang/gui's setting, chooses the axes:
+`vertical_only` (the default), `horizontal_only`, or `both`. The content is as
+wide as its rightmost child reaches and as tall as its lowest, and whatever
+overflows along an axis the mode leaves out is clipped.
+
+```v
+ui2.scroll_with_mode('columns', frame, 0xffffff, .horizontal_only, columns)
+```
+
+```vml
+Scroll {
+    id: columns
+    scroll_mode: horizontal_only
+}
+```
+
+The horizontal scroller runs along the bottom edge. A trackpad or a tilt wheel
+scrolls sideways directly, and Shift turns a plain wheel sideways. Scroll
+elements nest: a gesture along an axis the element under the pointer does not
+scroll moves the nearest enclosing one that does, so a strip of columns that
+each scroll vertically still scrolls sideways with the pointer over a column.
+
+`scroll_offset(id)` and `scroll_horizontal_offset(id)` read the position,
+`scroll_to_offset`, `scroll_to_horizontal_offset` and `scroll_to_rect` set it,
+and `on_scroll` reports a change along either axis. An offset asked for before
+the element exists is taken up when it is first laid out. To scroll to content
+the event being handled has just added, call `refresh()` first so the element
+has its new range. The iOS backend scrolls the same modes but does not expose
+these functions.
+
 ## Fonts and text sizes
 
 `TextStyle.size` is in points. Win32 and the Linux desktops resolve a point at
@@ -796,6 +953,8 @@ Typed-VML ports from `v-ui` include:
   scrollable multiline text areas.
 - `v run examples/scrollview/main.v` — two independently scrollable read-only
   text panes with generated content.
+- `v run examples/horizontal_scroll/main.v` — a column browser whose strip of
+  columns scrolls sideways while each column scrolls its own rows.
 - `v run examples/box_layout_with_textbox/main.v` — fixed and proportional box
   layout with an editable multiline text area.
 - `v run examples/files_dropped/main.v` — collect dropped files and plain text

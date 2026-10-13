@@ -213,6 +213,28 @@ pub enum VAlign {
 	bottom
 }
 
+// ScrollMode names the axes a Scroll element scrolls along, after vlang/gui's
+// setting of the same name. Content past the edge of an axis the mode leaves
+// out is clipped, which is why vertical_only, the behaviour Scroll always had,
+// stays the default.
+pub enum ScrollMode {
+	vertical_only
+	horizontal_only
+	both
+}
+
+// scroll_mode reads a ScrollMode from its VML spelling.
+pub fn scroll_mode(value string) !ScrollMode {
+	return match value {
+		'', 'vertical_only', 'vertical' { .vertical_only }
+		'horizontal_only', 'horizontal' { .horizontal_only }
+		'both' { .both }
+		else {
+			return error('unknown scroll mode `${value}`')
+		}
+	}
+}
+
 pub enum Kind {
 	screen
 	view
@@ -365,8 +387,10 @@ pub:
 	readonly              bool // text_area: selectable but not editable
 	disable_scroll        bool // text_area: hide the internal scroll view scroller
 	persistent_scrollbars bool // scroll: keep a legacy always-visible scroller instead of the auto-fading overlay one
+	scroll_mode           ScrollMode // scroll: the axes the content scrolls along
 	secure                bool // text_field: native password entry
 	clickable             bool // view/image: emit pointer down/up events
+	button_behavior       bool // view: emit its ordinary action when released like a button
 	draggable             bool // view/image: emit pointer drag events
 	rotation              f64 // image: clockwise degrees
 	cursor                string // view/image: hover cursor hint
@@ -538,6 +562,69 @@ pub fn clickable_view(id string, frame Rect, box_ BoxStyle, children []Element) 
 	}
 }
 
+// button_view is a container with ordinary button activation semantics. Unlike
+// clickable_view, which reports raw pointer phases, it emits its action once
+// when a press is released inside the view.
+pub fn button_view(id string, frame Rect, box_ BoxStyle, children []Element) Element {
+	return with_button_behavior(view(id, frame, box_, children))
+}
+
+// with_button_behavior turns a composed view into one semantic button without
+// discarding its children. Its id is the action unless with_action is applied
+// as well. Other element kinds are returned unchanged.
+pub fn with_button_behavior(el Element) Element {
+	if el.kind != .view {
+		return el
+	}
+	return Element{
+		...el
+		button_behavior: true
+		accessibility_role: if el.accessibility_role.len > 0 {
+			el.accessibility_role
+		} else {
+			'button'
+		}
+		accessibility_label: if el.accessibility_label.len > 0 {
+			el.accessibility_label
+		} else {
+			button_behavior_label(el)
+		}
+	}
+}
+
+fn button_behavior_label(el Element) string {
+	if el.text.trim_space().len > 0 {
+		return el.text
+	}
+	for child in el.children {
+		if !button_behavior_label_source(child) {
+			continue
+		}
+		if child.accessibility_label.trim_space().len > 0 {
+			return child.accessibility_label
+		}
+		child_label := button_behavior_label(child)
+		if child_label.len > 0 {
+			return child_label
+		}
+	}
+	return ''
+}
+
+fn button_behavior_label_source(el Element) bool {
+	if el.hidden {
+		return false
+	}
+	return match el.kind {
+		.label { true }
+		.view, .image {
+			!el.button_behavior && !el.clickable && !el.draggable && !el.long_press
+				&& !el.swipe_left && el.menu.len == 0
+		}
+		else { false }
+	}
+}
+
 pub fn draggable_view(id string, frame Rect, box_ BoxStyle, children []Element) Element {
 	return Element{
 		kind: .view
@@ -611,6 +698,46 @@ pub fn scroll_persistent(id string, frame Rect, bg u32, children []Element) Elem
 		children: children
 		persistent_scrollbars: true
 	}
+}
+
+// scroll_with_mode is scroll along the axes mode names: sideways for a strip of
+// columns wider than its pane, or both ways for a canvas larger than its viewport.
+// The content is as wide as its rightmost child reaches.
+pub fn scroll_with_mode(id string, frame Rect, bg u32, mode ScrollMode, children []Element) Element {
+	return Element{
+		kind: .scroll
+		id: id
+		frame: frame
+		box: BoxStyle{
+			bg: bg
+		}
+		children: children
+		scroll_mode: mode
+	}
+}
+
+// scroll_mode_offset holds a scroll position to the axes a mode scrolls. Along an axis
+// the mode leaves out the position is the start: anything else would keep the content
+// shifted with no way to scroll it back.
+fn scroll_mode_offset(mode ScrollMode, x f64, y f64) (f64, f64) {
+	return if mode == .vertical_only { 0.0 } else { x }, if mode == .horizontal_only {
+		0.0
+	} else {
+		y
+	}
+}
+
+// scroll_content_width is how far the children of a Scroll element reach to the
+// right, which is the width a sideways scroll has to cover. Hidden children take
+// no room.
+fn scroll_content_width(children []Element) f64 {
+	mut width := 0.0
+	for child in children {
+		if !child.hidden && child.frame.x + child.frame.width > width {
+			width = child.frame.x + child.frame.width
+		}
+	}
+	return width
 }
 
 pub fn label(id string, text string, frame Rect, style TextStyle) Element {

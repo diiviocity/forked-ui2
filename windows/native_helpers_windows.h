@@ -23,6 +23,8 @@
 #include <windows.h>
 #include <windowsx.h>
 #include <commctrl.h>
+#include <oleacc.h>
+#include <oleauto.h>
 #include <shellapi.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -57,6 +59,7 @@ extern void ui2_windows_control_pointer(void *hwnd, unsigned int message, int x,
 extern void ui2_windows_control_border(void *hwnd);
 extern int ui2_windows_is_transparent_button(void *hwnd);
 extern int ui2_windows_paint_transparent_button(void *hwnd);
+extern int ui2_windows_accessibility_activate(void *hwnd);
 
 static inline void ui2_win_refresh_text_font(HWND hwnd);
 
@@ -125,6 +128,157 @@ static inline int ui2_win_apply_cursor(void *hwnd) {
 	return 1;
 }
 
+typedef struct ui2_win_tab_order {
+	HWND current;
+	HWND first;
+	HWND last;
+	HWND previous;
+	HWND next;
+	int found;
+} ui2_win_tab_order;
+
+static void ui2_win_visit_tab_order(HWND candidate, ui2_win_tab_order *order) {
+	if (order->first == NULL) order->first = candidate;
+	if (order->found && order->next == NULL) order->next = candidate;
+	if (candidate == order->current) {
+		order->found = 1;
+		order->previous = order->last;
+	}
+	order->last = candidate;
+}
+
+static void ui2_win_collect_tab_order(HWND parent, ui2_win_tab_order *order) {
+	for (HWND child = GetWindow(parent, GW_CHILD); child != NULL;
+			child = GetWindow(child, GW_HWNDNEXT)) {
+		if (!IsWindowVisible(child) || !IsWindowEnabled(child)) continue;
+		LONG_PTR style = GetWindowLongPtrW(child, GWL_STYLE);
+		LONG_PTR ex_style = GetWindowLongPtrW(child, GWL_EXSTYLE);
+		if ((style & WS_TABSTOP) != 0) ui2_win_visit_tab_order(child, order);
+		if ((ex_style & WS_EX_CONTROLPARENT) != 0) {
+			ui2_win_collect_tab_order(child, order);
+		}
+	}
+}
+
+static inline int ui2_win_focus_next(void *hwnd_ptr, int backwards) {
+	HWND hwnd = (HWND)hwnd_ptr;
+	if (hwnd == NULL) return 0;
+	HWND root = GetAncestor(hwnd, GA_ROOT);
+	if (root == NULL) return 0;
+	ui2_win_tab_order order;
+	ZeroMemory(&order, sizeof(order));
+	order.current = hwnd;
+	ui2_win_collect_tab_order(root, &order);
+	HWND next = backwards
+		? (order.found && order.previous != NULL ? order.previous : order.last)
+		: (order.found && order.next != NULL ? order.next : order.first);
+	if (next == NULL || next == hwnd) return 0;
+	SetFocus(next);
+	return GetFocus() == next;
+}
+
+static const wchar_t *ui2_win_accessible_button_property(void) {
+	return L"ui2.accessible_button";
+}
+
+static inline int ui2_win_is_accessible_button(void *hwnd_ptr) {
+	HWND hwnd = (HWND)hwnd_ptr;
+	return hwnd != NULL
+		&& GetPropW(hwnd, ui2_win_accessible_button_property()) != NULL;
+}
+
+static inline int ui2_win_text_matches(HWND hwnd, const wchar_t *expected) {
+	const wchar_t *text = expected == NULL ? L"" : expected;
+	int length = GetWindowTextLengthW(hwnd);
+	if (length != (int)wcslen(text)) return 0;
+	wchar_t *actual = (wchar_t *)malloc((size_t)(length + 1) * sizeof(wchar_t));
+	if (actual == NULL) return length == 0;
+	GetWindowTextW(hwnd, actual, length + 1);
+	int matches = wcscmp(actual, text) == 0;
+	free(actual);
+	return matches;
+}
+
+static inline void ui2_win_configure_accessible_button(void *hwnd_ptr,
+		const wchar_t *label, int active) {
+	HWND hwnd = (HWND)hwnd_ptr;
+	if (hwnd == NULL) return;
+	int was_active = ui2_win_is_accessible_button(hwnd);
+	if (was_active && !active) {
+		NotifyWinEvent(EVENT_OBJECT_DESTROY, hwnd, OBJID_CLIENT, CHILDID_SELF);
+	}
+	if (active) {
+		SetPropW(hwnd, ui2_win_accessible_button_property(), (HANDLE)1);
+	} else {
+		RemovePropW(hwnd, ui2_win_accessible_button_property());
+	}
+	LONG_PTR style = GetWindowLongPtrW(hwnd, GWL_STYLE);
+	LONG_PTR next_style = active ? style | WS_TABSTOP : style & ~((LONG_PTR)WS_TABSTOP);
+	if (style != next_style) {
+		SetWindowLongPtrW(hwnd, GWL_STYLE, next_style);
+		SetWindowPos(hwnd, NULL, 0, 0, 0, 0,
+			SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+	}
+	const wchar_t *caption = active && label != NULL ? label : L"";
+	int name_changed = !ui2_win_text_matches(hwnd, caption);
+	if (name_changed) {
+		SetWindowTextW(hwnd, caption);
+	}
+	if (!was_active && active) {
+		NotifyWinEvent(EVENT_OBJECT_CREATE, hwnd, OBJID_CLIENT, CHILDID_SELF);
+	} else if (active && name_changed) {
+		NotifyWinEvent(EVENT_OBJECT_NAMECHANGE, hwnd, OBJID_CLIENT, CHILDID_SELF);
+	}
+}
+
+static inline void ui2_win_notify_invoked(void *hwnd_ptr) {
+	HWND hwnd = (HWND)hwnd_ptr;
+	if (hwnd != NULL && IsWindow(hwnd)) {
+		NotifyWinEvent(EVENT_OBJECT_INVOKED, hwnd, OBJID_CLIENT, CHILDID_SELF);
+	}
+}
+
+static inline LRESULT ui2_win_accessible_button_object(HWND hwnd, WPARAM wparam) {
+	IAccessible *accessible = NULL;
+	HRESULT result = CreateStdAccessibleProxyW(hwnd, L"BUTTON", OBJID_CLIENT,
+		&IID_IAccessible, (void **)&accessible);
+	if (FAILED(result) || accessible == NULL) return 0;
+	LRESULT object = LresultFromObject(&IID_IAccessible, wparam, (IUnknown *)accessible);
+	accessible->lpVtbl->Release(accessible);
+	return object;
+}
+
+// The scroll bar a wheel message moves: the horizontal one for a tilt wheel, and for a
+// plain wheel turned with Shift held. A window showing that bar is the one to scroll.
+static inline DWORD ui2_win_wheel_scroll_style(UINT message, WPARAM wparam) {
+	if (message == WM_MOUSEHWHEEL || (GET_KEYSTATE_WPARAM(wparam) & MK_SHIFT) != 0) {
+		return WS_HSCROLL;
+	}
+	return WS_VSCROLL;
+}
+
+// The nearest window above this one that shows the bar for an axis: the pane that
+// takes a scroll along it which this one has no use for.
+static inline void *ui2_win_scroll_parent(void *hwnd_ptr, int horizontal) {
+	DWORD bar = horizontal ? WS_HSCROLL : WS_VSCROLL;
+	HWND parent = GetParent((HWND)hwnd_ptr);
+	while (parent != NULL) {
+		if ((GetWindowLongPtrW(parent, GWL_STYLE) & bar) != 0) return parent;
+		parent = GetParent(parent);
+	}
+	return NULL;
+}
+
+// Hands a wheel message from a window with nothing to scroll that way to the nearest
+// one above it that has, and says whether there was one.
+static inline int ui2_win_forward_wheel(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam) {
+	HWND parent = (HWND)ui2_win_scroll_parent(hwnd,
+		ui2_win_wheel_scroll_style(message, wparam) == WS_HSCROLL);
+	if (parent == NULL) return 0;
+	SendMessageW(parent, message, wparam, lparam);
+	return 1;
+}
+
 static LRESULT CALLBACK ui2_win_control_subclass(HWND hwnd, UINT message, WPARAM wparam,
 		LPARAM lparam, UINT_PTR subclass_id, DWORD_PTR reference_data) {
 	(void)subclass_id;
@@ -136,6 +290,10 @@ static LRESULT CALLBACK ui2_win_control_subclass(HWND hwnd, UINT message, WPARAM
 		return 0;
 	}
 	if (message == WM_KEYDOWN && !IsWindow(hwnd)) return 0;
+	if (message == WM_KEYDOWN && wparam == VK_TAB && ui2_win_focus_next(hwnd,
+			(GetKeyState(VK_SHIFT) & 0x8000) != 0)) {
+		return 0;
+	}
 	if (message == WM_SETCURSOR && LOWORD(lparam) == HTCLIENT && ui2_win_apply_cursor(hwnd)) {
 		return TRUE;
 	}
@@ -168,14 +326,15 @@ static LRESULT CALLBACK ui2_win_control_subclass(HWND hwnd, UINT message, WPARAM
 		if (IsWindow(hwnd)) ui2_win_refresh_text_font(hwnd);
 		return result;
 	}
-	if (message == WM_MOUSEWHEEL) {
+	if (message == WM_MOUSEWHEEL || message == WM_MOUSEHWHEEL) {
+		DWORD bar = ui2_win_wheel_scroll_style(message, wparam);
 		HWND parent = GetParent(hwnd);
 		wchar_t class_name[64];
 		while (parent != NULL) {
 			class_name[0] = 0;
 			GetClassNameW(parent, class_name, 64);
 			if (wcscmp(class_name, L"UI2Container") == 0
-				&& (GetWindowLongPtrW(parent, GWL_STYLE) & WS_VSCROLL) != 0) {
+				&& (GetWindowLongPtrW(parent, GWL_STYLE) & bar) != 0) {
 				SendMessageW(parent, message, wparam, lparam);
 				return 0;
 			}
@@ -191,16 +350,22 @@ static LRESULT CALLBACK ui2_win_control_subclass(HWND hwnd, UINT message, WPARAM
 
 static LRESULT CALLBACK ui2_win_window_proc(HWND hwnd, UINT message, WPARAM wparam,
 		LPARAM lparam) {
-	if (message == WM_MOUSEWHEEL
-		&& (GetWindowLongPtrW(hwnd, GWL_STYLE) & WS_VSCROLL) == 0) {
-		HWND parent = GetParent(hwnd);
-		while (parent != NULL) {
-			if ((GetWindowLongPtrW(parent, GWL_STYLE) & WS_VSCROLL) != 0) {
-				SendMessageW(parent, message, wparam, lparam);
-				return 0;
-			}
-			parent = GetParent(parent);
-		}
+	if (message == WM_GETOBJECT && ui2_win_is_accessible_button(hwnd)
+		&& (DWORD)lparam == (DWORD)OBJID_CLIENT) {
+		return ui2_win_accessible_button_object(hwnd, wparam);
+	}
+	if (message == BM_CLICK && ui2_win_is_accessible_button(hwnd)) {
+		ui2_windows_accessibility_activate(hwnd);
+		return 0;
+	}
+	if ((message == WM_SETFOCUS || message == WM_KILLFOCUS)
+		&& ui2_win_is_accessible_button(hwnd)) {
+		InvalidateRect(hwnd, NULL, FALSE);
+	}
+	if ((message == WM_MOUSEWHEEL || message == WM_MOUSEHWHEEL)
+		&& (GetWindowLongPtrW(hwnd, GWL_STYLE) & ui2_win_wheel_scroll_style(message, wparam)) == 0
+		&& ui2_win_forward_wheel(hwnd, message, wparam, lparam)) {
+		return 0;
 	}
 	if (message == WM_CONTEXTMENU
 		&& ui2_windows_context_menu(hwnd, GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam))) {
@@ -212,6 +377,9 @@ static LRESULT CALLBACK ui2_win_window_proc(HWND hwnd, UINT message, WPARAM wpar
 	if (message == WM_LBUTTONDOWN || message == WM_MOUSEMOVE || message == WM_LBUTTONUP) {
 		ui2_windows_control_pointer(hwnd, message, GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam));
 		if (!IsWindow(hwnd)) return 0;
+	}
+	if (message == WM_NCDESTROY) {
+		RemovePropW(hwnd, ui2_win_accessible_button_property());
 	}
 	return (LRESULT)ui2_windows_window_proc(hwnd, message, (uintptr_t)wparam,
 		(intptr_t)lparam);
@@ -299,7 +467,24 @@ static inline HFONT ui2_win_system_font(void) {
 	return font == NULL ? (HFONT)GetStockObject(DEFAULT_GUI_FONT) : font;
 }
 
+static int ui2_win_accessibility_com_attempted = 0;
+static int ui2_win_accessibility_com_owned = 0;
+
+static inline void ui2_win_initialize_accessibility(void) {
+	if (ui2_win_accessibility_com_attempted) return;
+	ui2_win_accessibility_com_attempted = 1;
+	HRESULT result = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
+	ui2_win_accessibility_com_owned = SUCCEEDED(result);
+}
+
+static inline void ui2_win_shutdown_accessibility(void) {
+	if (ui2_win_accessibility_com_owned) CoUninitialize();
+	ui2_win_accessibility_com_attempted = 0;
+	ui2_win_accessibility_com_owned = 0;
+}
+
 static inline int ui2_win_register_classes(void) {
+	ui2_win_initialize_accessibility();
 	// Common Controls v6 supplies the current Windows button bezel and native
 	// hover/pressed states. Activate it before registering or creating controls.
 	ui2_win_enable_visual_styles();
@@ -586,6 +771,10 @@ static inline int ui2_win_is_window(void *hwnd) {
 	return hwnd != NULL && IsWindow((HWND)hwnd);
 }
 
+static inline int ui2_win_is_enabled(void *hwnd) {
+	return hwnd != NULL && IsWindowEnabled((HWND)hwnd);
+}
+
 static inline void *ui2_win_parent(void *hwnd) {
 	return hwnd == NULL ? NULL : GetParent((HWND)hwnd);
 }
@@ -697,6 +886,19 @@ static inline void ui2_win_focus(void *hwnd) {
 	if (hwnd != NULL) SetFocus((HWND)hwnd);
 }
 
+static inline void ui2_win_draw_focus_rect(void *hwnd_ptr) {
+	HWND hwnd = (HWND)hwnd_ptr;
+	if (hwnd == NULL || GetFocus() != hwnd) return;
+	RECT rect;
+	if (!GetClientRect(hwnd, &rect)) return;
+	InflateRect(&rect, -3, -3);
+	if (rect.right <= rect.left || rect.bottom <= rect.top) return;
+	HDC dc = GetDC(hwnd);
+	if (dc == NULL) return;
+	DrawFocusRect(dc, &rect);
+	ReleaseDC(hwnd, dc);
+}
+
 static inline void *ui2_win_focus_handle(void) {
 	return GetFocus();
 }
@@ -755,6 +957,92 @@ static inline int ui2_win_placeholder_matches(void *hwnd, const wchar_t *expecte
 
 static inline uintptr_t ui2_win_widget_style(void *hwnd) {
 	return hwnd == NULL ? 0 : (uintptr_t)GetWindowLongPtrW((HWND)hwnd, GWL_STYLE);
+}
+
+static inline void ui2_win_click(void *hwnd) {
+	if (hwnd != NULL) SendMessageW((HWND)hwnd, BM_CLICK, 0, 0);
+}
+
+enum {
+	UI2_WIN_ACCESSIBLE_ROLE_BUTTON = 1,
+	UI2_WIN_ACCESSIBLE_NAME = 2,
+	UI2_WIN_ACCESSIBLE_DEFAULT_ACTION = 4,
+	UI2_WIN_ACCESSIBLE_FOCUSABLE = 8,
+	UI2_WIN_ACCESSIBLE_UNAVAILABLE = 16
+};
+
+static inline unsigned int ui2_win_accessible_button_info(void *hwnd_ptr,
+		const wchar_t *expected_name) {
+	HWND hwnd = (HWND)hwnd_ptr;
+	if (hwnd == NULL) return 0;
+	IAccessible *accessible = NULL;
+	if (FAILED(AccessibleObjectFromWindow(hwnd, OBJID_CLIENT, &IID_IAccessible,
+			(void **)&accessible)) || accessible == NULL) {
+		return 0;
+	}
+	VARIANT child;
+	VARIANT role;
+	VARIANT state;
+	VariantInit(&child);
+	VariantInit(&role);
+	VariantInit(&state);
+	child.vt = VT_I4;
+	child.lVal = CHILDID_SELF;
+	BSTR name = NULL;
+	BSTR action = NULL;
+	unsigned int info = 0;
+	if (SUCCEEDED(accessible->lpVtbl->get_accRole(accessible, child, &role))
+		&& role.vt == VT_I4 && role.lVal == ROLE_SYSTEM_PUSHBUTTON) {
+		info |= UI2_WIN_ACCESSIBLE_ROLE_BUTTON;
+	}
+	if (SUCCEEDED(accessible->lpVtbl->get_accName(accessible, child, &name))
+		&& name != NULL && expected_name != NULL && wcscmp(name, expected_name) == 0) {
+		info |= UI2_WIN_ACCESSIBLE_NAME;
+	}
+	if (SUCCEEDED(accessible->lpVtbl->get_accDefaultAction(accessible, child, &action))
+		&& action != NULL && SysStringLen(action) > 0) {
+		info |= UI2_WIN_ACCESSIBLE_DEFAULT_ACTION;
+	}
+	if (SUCCEEDED(accessible->lpVtbl->get_accState(accessible, child, &state))
+		&& state.vt == VT_I4) {
+		if ((state.lVal & STATE_SYSTEM_FOCUSABLE) != 0) {
+			info |= UI2_WIN_ACCESSIBLE_FOCUSABLE;
+		}
+		if ((state.lVal & STATE_SYSTEM_UNAVAILABLE) != 0) {
+			info |= UI2_WIN_ACCESSIBLE_UNAVAILABLE;
+		}
+	}
+	if (name != NULL) SysFreeString(name);
+	if (action != NULL) SysFreeString(action);
+	VariantClear(&role);
+	VariantClear(&state);
+	accessible->lpVtbl->Release(accessible);
+	return info;
+}
+
+static inline int ui2_win_accessible_button_invoke(void *hwnd_ptr) {
+	HWND hwnd = (HWND)hwnd_ptr;
+	if (hwnd == NULL) return 0;
+	IAccessible *accessible = NULL;
+	if (FAILED(AccessibleObjectFromWindow(hwnd, OBJID_CLIENT, &IID_IAccessible,
+			(void **)&accessible)) || accessible == NULL) {
+		return 0;
+	}
+	VARIANT child;
+	VariantInit(&child);
+	child.vt = VT_I4;
+	child.lVal = CHILDID_SELF;
+	HRESULT result = accessible->lpVtbl->accDoDefaultAction(accessible, child);
+	accessible->lpVtbl->Release(accessible);
+	return SUCCEEDED(result);
+}
+
+static inline void ui2_win_dispatch_pending_messages(void) {
+	MSG message;
+	while (PeekMessageW(&message, NULL, 0, 0, PM_REMOVE)) {
+		TranslateMessage(&message);
+		DispatchMessageW(&message);
+	}
 }
 
 static inline void ui2_win_get_selection(void *hwnd, unsigned int *start, unsigned int *end) {
@@ -1268,31 +1556,100 @@ static inline void ui2_win_clear_bitmap(void *hwnd_ptr) {
 	if (old != NULL) DeleteObject(old);
 }
 
-static inline int ui2_win_set_scroll(void *hwnd_ptr, int content_height, int position) {
-	HWND hwnd = (HWND)hwnd_ptr;
-	RECT rect;
-	GetClientRect(hwnd, &rect);
+// Each axis of a Scroll element is kept on a standard scroll bar of its window, which
+// the system shows while the content is longer than what the window shows of it.
+static inline int ui2_win_scroll_bar(int horizontal) {
+	return horizontal ? SB_HORZ : SB_VERT;
+}
+
+static inline int ui2_win_set_scroll_page(HWND hwnd, int bar, int content, int page, int position) {
 	SCROLLINFO info;
 	ZeroMemory(&info, sizeof(info));
 	info.cbSize = sizeof(info);
 	info.fMask = SIF_RANGE | SIF_PAGE | SIF_POS;
 	info.nMin = 0;
-	info.nMax = content_height > 0 ? content_height - 1 : 0;
-	info.nPage = (UINT)(rect.bottom - rect.top);
+	info.nMax = content > 0 ? content - 1 : 0;
+	info.nPage = (UINT)(page > 0 ? page : 0);
 	info.nPos = position;
-	SetScrollInfo(hwnd, SB_VERT, &info, TRUE);
+	SetScrollInfo(hwnd, bar, &info, TRUE);
 	info.fMask = SIF_POS;
-	GetScrollInfo(hwnd, SB_VERT, &info);
+	GetScrollInfo(hwnd, bar, &info);
 	return info.nPos;
 }
 
-static inline int ui2_win_scroll_message(void *hwnd_ptr, uintptr_t wparam) {
+static inline int ui2_win_set_scroll(void *hwnd_ptr, int content, int position, int horizontal) {
 	HWND hwnd = (HWND)hwnd_ptr;
+	RECT rect;
+	GetClientRect(hwnd, &rect);
+	return ui2_win_set_scroll_page(hwnd, ui2_win_scroll_bar(horizontal), content,
+		horizontal ? rect.right - rect.left : rect.bottom - rect.top, position);
+}
+
+// Settles how much of each axis a Scroll element shows once its bars are in place.
+// Each bar takes room from the axis the other one pages over, so neither page can be
+// read off the client area while the other bar may still come or go. Which bars are
+// needed follows from the area the window has with neither: a vertical bar when the
+// content is taller than that, a horizontal one when it is wider than what the
+// vertical bar leaves, and a vertical one after all when the horizontal bar is what
+// makes the content too tall.
+static inline void ui2_win_scroll_pages(int width, int height, int content_width,
+		int content_height, int bar_width, int bar_height, int *page_width, int *page_height) {
+	int vertical = content_height > height;
+	int horizontal = content_width > width - (vertical ? bar_width : 0);
+	if (horizontal && !vertical) vertical = content_height > height - bar_height;
+	*page_width = width - (vertical ? bar_width : 0);
+	*page_height = height - (horizontal ? bar_height : 0);
+}
+
+// Makes a standard bar show exactly when it is needed. A range that outgrows its page
+// brings the bar in and one that fits takes it away, so this normally finds nothing to
+// do. Asking outright keeps the horizontal bar from resting on that alone: the window
+// is created with the style for the vertical bar only.
+static inline void ui2_win_ensure_scroll_bar(HWND hwnd, int bar, int needed) {
+	DWORD style = bar == SB_HORZ ? WS_HSCROLL : WS_VSCROLL;
+	int showing = (GetWindowLongPtrW(hwnd, GWL_STYLE) & style) != 0;
+	if (showing != (needed != 0)) ShowScrollBar(hwnd, bar, needed ? TRUE : FALSE);
+}
+
+// Sets both bars of a Scroll element together, for one that scrolls sideways. Setting
+// them one after the other leaves whichever went first paging over room the other bar
+// has since taken, and the content under that bar out of reach.
+static inline void ui2_win_set_scroll_both(void *hwnd_ptr, int content_width, int content_height,
+		int position_x, int position_y) {
+	HWND hwnd = (HWND)hwnd_ptr;
+	RECT rect;
+	// The window has no border, so its own rectangle is the client area together
+	// with whichever bars are showing.
+	GetWindowRect(hwnd, &rect);
+	int page_width = 0;
+	int page_height = 0;
+	ui2_win_scroll_pages(rect.right - rect.left, rect.bottom - rect.top, content_width,
+		content_height, GetSystemMetrics(SM_CXVSCROLL), GetSystemMetrics(SM_CYHSCROLL),
+		&page_width, &page_height);
+	ui2_win_set_scroll_page(hwnd, SB_VERT, content_height, page_height, position_y);
+	ui2_win_set_scroll_page(hwnd, SB_HORZ, content_width, page_width, position_x);
+	ui2_win_ensure_scroll_bar(hwnd, SB_VERT, content_height > page_height);
+	ui2_win_ensure_scroll_bar(hwnd, SB_HORZ, content_width > page_width);
+}
+
+static inline int ui2_win_scroll_position(void *hwnd_ptr, int horizontal) {
+	SCROLLINFO info;
+	ZeroMemory(&info, sizeof(info));
+	info.cbSize = sizeof(info);
+	info.fMask = SIF_POS;
+	GetScrollInfo((HWND)hwnd_ptr, ui2_win_scroll_bar(horizontal), &info);
+	return info.nPos;
+}
+
+// The line, page and end codes of WM_HSCROLL share their values with WM_VSCROLL's.
+static inline int ui2_win_scroll_message(void *hwnd_ptr, uintptr_t wparam, int horizontal) {
+	HWND hwnd = (HWND)hwnd_ptr;
+	int bar = ui2_win_scroll_bar(horizontal);
 	SCROLLINFO info;
 	ZeroMemory(&info, sizeof(info));
 	info.cbSize = sizeof(info);
 	info.fMask = SIF_ALL;
-	GetScrollInfo(hwnd, SB_VERT, &info);
+	GetScrollInfo(hwnd, bar, &info);
 	int position = info.nPos;
 	switch (LOWORD(wparam)) {
 	case SB_TOP: position = info.nMin; break;
@@ -1307,55 +1664,88 @@ static inline int ui2_win_scroll_message(void *hwnd_ptr, uintptr_t wparam) {
 	}
 	info.fMask = SIF_POS;
 	info.nPos = position;
-	SetScrollInfo(hwnd, SB_VERT, &info, TRUE);
-	GetScrollInfo(hwnd, SB_VERT, &info);
+	SetScrollInfo(hwnd, bar, &info, TRUE);
+	GetScrollInfo(hwnd, bar, &info);
 	return info.nPos;
 }
 
-static inline int ui2_win_scroll_wheel(void *hwnd_ptr, uintptr_t wparam) {
-	HWND hwnd = (HWND)hwnd_ptr;
-	SCROLLINFO info;
-	ZeroMemory(&info, sizeof(info));
-	info.cbSize = sizeof(info);
-	info.fMask = SIF_ALL;
-	GetScrollInfo(hwnd, SB_VERT, &info);
+// How far a wheel message asks to scroll, positive towards the end of the content. A
+// wheel rolled away from the user is the positive one and scrolls back. A tilt wheel
+// reports a push to the right as positive, which scrolls on.
+//
+// A precision wheel or a touchpad reports steps smaller than WHEEL_DELTA, many to a
+// notch. The step is scaled before it is divided, and what the division leaves over
+// is kept for the next message, so those steps add up to the same distance a whole
+// notch covers instead of each rounding away to nothing. What is left over belongs to
+// the axis being scrolled, not to the kind of message: a plain wheel scrolls
+// sideways with Shift held, and must not finish there a step it began vertically.
+static inline int ui2_win_wheel_distance(uintptr_t wparam, int tilt, int horizontal) {
+	static int leftover[2];
+	int *rest = &leftover[horizontal ? 1 : 0];
 	int delta = GET_WHEEL_DELTA_WPARAM(wparam);
-	info.fMask = SIF_POS;
-	info.nPos -= (delta / WHEEL_DELTA) * 48;
-	SetScrollInfo(hwnd, SB_VERT, &info, TRUE);
-	GetScrollInfo(hwnd, SB_VERT, &info);
-	return info.nPos;
+	int step = (tilt ? delta : -delta) * 48;
+	// A wheel turned back the other way starts afresh rather than working off what
+	// the last direction left.
+	if ((*rest > 0 && step < 0) || (*rest < 0 && step > 0)) *rest = 0;
+	int scaled = step + *rest;
+	int distance = scaled / WHEEL_DELTA;
+	*rest = scaled - distance * WHEEL_DELTA;
+	return distance;
 }
 
-static inline int ui2_win_scroll_to_rect(void *hwnd_ptr, int top, int bottom) {
+// Moves a scroll bar by a distance and reports where it settled, which is short of
+// what was asked at either end of its range.
+static inline int ui2_win_scroll_by(void *hwnd_ptr, int distance, int horizontal) {
 	HWND hwnd = (HWND)hwnd_ptr;
+	int bar = ui2_win_scroll_bar(horizontal);
 	SCROLLINFO info;
 	ZeroMemory(&info, sizeof(info));
 	info.cbSize = sizeof(info);
 	info.fMask = SIF_ALL;
-	GetScrollInfo(hwnd, SB_VERT, &info);
+	GetScrollInfo(hwnd, bar, &info);
+	info.fMask = SIF_POS;
+	info.nPos += distance;
+	SetScrollInfo(hwnd, bar, &info, TRUE);
+	GetScrollInfo(hwnd, bar, &info);
+	return info.nPos;
+}
+
+static inline int ui2_win_wheel_is_shifted(uintptr_t wparam) {
+	return (GET_KEYSTATE_WPARAM(wparam) & MK_SHIFT) != 0;
+}
+
+// Scrolls the least distance that brings the span from start to end into view.
+static inline int ui2_win_scroll_to_rect(void *hwnd_ptr, int start, int end, int horizontal) {
+	HWND hwnd = (HWND)hwnd_ptr;
+	int bar = ui2_win_scroll_bar(horizontal);
+	SCROLLINFO info;
+	ZeroMemory(&info, sizeof(info));
+	info.cbSize = sizeof(info);
+	info.fMask = SIF_ALL;
+	GetScrollInfo(hwnd, bar, &info);
 	int position = info.nPos;
-	if (top < position) position = top;
-	if (bottom > position + (int)info.nPage) position = bottom - (int)info.nPage;
+	if (start < position) position = start;
+	if (end > position + (int)info.nPage) position = end - (int)info.nPage;
 	info.fMask = SIF_POS;
 	info.nPos = position;
-	SetScrollInfo(hwnd, SB_VERT, &info, TRUE);
-	GetScrollInfo(hwnd, SB_VERT, &info);
+	SetScrollInfo(hwnd, bar, &info, TRUE);
+	GetScrollInfo(hwnd, bar, &info);
 	return info.nPos;
 }
 
 // Put a scroll bar at a position rather than scrolling the least amount that brings
 // a rect into view. SetScrollInfo clamps to the range the element currently has, and
 // reading back reports where it settled.
-static inline int ui2_win_set_scroll_position(void *hwnd_ptr, int position) {
+static inline int ui2_win_set_scroll_position(void *hwnd_ptr, int position, int horizontal) {
 	HWND hwnd = (HWND)hwnd_ptr;
+	int bar = ui2_win_scroll_bar(horizontal);
 	SCROLLINFO info;
 	ZeroMemory(&info, sizeof(info));
 	info.cbSize = sizeof(info);
 	info.fMask = SIF_POS;
 	info.nPos = position;
-	SetScrollInfo(hwnd, SB_VERT, &info, TRUE);
-	GetScrollInfo(hwnd, SB_VERT, &info);
+	SetScrollInfo(hwnd, bar, &info, TRUE);
+	GetScrollInfo(hwnd, bar, &info);
 	return info.nPos;
 }
 
@@ -1387,6 +1777,15 @@ static inline void ui2_win_point_to_root(void *hwnd_ptr, void *root_ptr, int *x,
 	MapWindowPoints((HWND)hwnd_ptr, (HWND)root_ptr, &point, 1);
 	if (x != NULL) *x = point.x;
 	if (y != NULL) *y = point.y;
+}
+
+static inline int ui2_win_root_point_in_client(void *root_ptr, void *target_ptr, int x, int y) {
+	if (root_ptr == NULL || target_ptr == NULL) return 0;
+	POINT point = {x, y};
+	RECT bounds;
+	MapWindowPoints((HWND)root_ptr, (HWND)target_ptr, &point, 1);
+	if (!GetClientRect((HWND)target_ptr, &bounds)) return 0;
+	return PtInRect(&bounds, point) != 0;
 }
 
 static inline void *ui2_win_menu_create(void) {

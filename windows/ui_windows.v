@@ -12,9 +12,19 @@ $if !ui2_custom_rendering ? {
 
 #flag windows -lshell32
 
+#flag windows -loleacc
+
+#flag windows -lole32
+
+#flag windows -loleaut32
+
+#flag windows -luuid
+
 #insert "@VMODROOT/windows/native_helpers_windows.h"
 
 fn C.ui2_win_register_classes() int
+
+fn C.ui2_win_shutdown_accessibility()
 
 fn C.ui2_win_visual_styles_enabled() int
 
@@ -44,6 +54,8 @@ fn C.ui2_win_destroy(hwnd voidptr)
 
 fn C.ui2_win_is_window(hwnd voidptr) int
 
+fn C.ui2_win_is_enabled(hwnd voidptr) int
+
 fn C.ui2_win_parent(hwnd voidptr) voidptr
 
 fn C.ui2_win_set_parent(hwnd voidptr, parent voidptr)
@@ -56,6 +68,10 @@ fn C.ui2_win_show(hwnd voidptr, visible int)
 
 fn C.ui2_win_enable(hwnd voidptr, enabled int)
 
+fn C.ui2_win_configure_accessible_button(hwnd voidptr, label &u16, active int)
+
+fn C.ui2_win_is_accessible_button(hwnd voidptr) int
+
 fn C.ui2_win_create_tooltip(hwnd voidptr, text &u16) voidptr
 
 fn C.ui2_win_tooltip_add_target(tooltip voidptr, target voidptr) int
@@ -65,6 +81,10 @@ fn C.ui2_win_border_width(width f64, extent int) int
 fn C.ui2_win_destroy_tooltip(tooltip voidptr)
 
 fn C.ui2_win_focus(hwnd voidptr)
+
+fn C.ui2_win_focus_next(hwnd voidptr, backwards int) int
+
+fn C.ui2_win_draw_focus_rect(hwnd voidptr)
 
 fn C.ui2_win_focus_handle() voidptr
 
@@ -93,6 +113,16 @@ fn C.ui2_win_set_edit_options(hwnd voidptr, placeholder &u16, readonly int, padd
 fn C.ui2_win_placeholder_matches(hwnd voidptr, expected &u16) int
 
 fn C.ui2_win_widget_style(hwnd voidptr) usize
+
+fn C.ui2_win_click(hwnd voidptr)
+
+fn C.ui2_win_notify_invoked(hwnd voidptr)
+
+fn C.ui2_win_accessible_button_info(hwnd voidptr, expected_name &u16) u32
+
+fn C.ui2_win_accessible_button_invoke(hwnd voidptr) int
+
+fn C.ui2_win_dispatch_pending_messages()
 
 fn C.ui2_win_get_selection(hwnd voidptr, start &u32, end &u32)
 
@@ -140,14 +170,24 @@ fn C.ui2_win_set_bitmap(hwnd voidptr, path &u16, width int, height int) voidptr
 
 fn C.ui2_win_clear_bitmap(hwnd voidptr)
 
-fn C.ui2_win_set_scroll(hwnd voidptr, content_height int, position int) int
+fn C.ui2_win_set_scroll(hwnd voidptr, content int, position int, horizontal int) int
 
-fn C.ui2_win_scroll_message(hwnd voidptr, wparam usize) int
+fn C.ui2_win_set_scroll_both(hwnd voidptr, content_width int, content_height int, position_x int, position_y int)
 
-fn C.ui2_win_scroll_wheel(hwnd voidptr, wparam usize) int
+fn C.ui2_win_scroll_position(hwnd voidptr, horizontal int) int
 
-fn C.ui2_win_scroll_to_rect(hwnd voidptr, top int, bottom int) int
-fn C.ui2_win_set_scroll_position(hwnd voidptr, position int) int
+fn C.ui2_win_scroll_message(hwnd voidptr, wparam usize, horizontal int) int
+
+fn C.ui2_win_wheel_distance(wparam usize, tilt int, horizontal int) int
+
+fn C.ui2_win_scroll_by(hwnd voidptr, distance int, horizontal int) int
+
+fn C.ui2_win_scroll_parent(hwnd voidptr, horizontal int) voidptr
+
+fn C.ui2_win_wheel_is_shifted(wparam usize) int
+
+fn C.ui2_win_scroll_to_rect(hwnd voidptr, start int, end int, horizontal int) int
+fn C.ui2_win_set_scroll_position(hwnd voidptr, position int, horizontal int) int
 
 fn C.ui2_win_capture_mouse(hwnd voidptr)
 
@@ -156,6 +196,8 @@ fn C.ui2_win_release_mouse()
 fn C.ui2_win_ticks() u64
 
 fn C.ui2_win_point_to_root(hwnd voidptr, root voidptr, x &int, y &int)
+
+fn C.ui2_win_root_point_in_client(root voidptr, target voidptr, x int, y int) int
 
 fn C.ui2_win_menu_create() voidptr
 
@@ -194,6 +236,7 @@ const win_wm_mouse_move = u32(0x0200)
 const win_wm_lbutton_down = u32(0x0201)
 const win_wm_lbutton_up = u32(0x0202)
 const win_wm_mouse_wheel = u32(0x020a)
+const win_wm_mouse_hwheel = u32(0x020e)
 const win_wm_dropfiles = u32(0x0233)
 const win_wm_refresh = u32(0x8000 + 77)
 const win_wm_paint_background = u32(0x8000 + 79)
@@ -212,11 +255,12 @@ struct WindowsRunConfig {
 }
 
 struct WindowsPointerBinding {
-	id         string
-	clickable  bool
-	draggable  bool
-	long_press bool
-	swipe_left bool
+	id              string
+	clickable       bool
+	button_behavior bool
+	draggable       bool
+	long_press      bool
+	swipe_left      bool
 }
 
 @[heap]
@@ -265,12 +309,15 @@ mut:
 	toggle_ids         map[u64]string
 	toggle_views       map[u64]voidptr
 	scroll_positions   map[string]int
+	scroll_positions_x map[string]int // only the Scroll elements whose mode scrolls sideways
 	node_label_boxed   map[string]bool
 	pending_scroll     map[string]int // Scroll element id -> offset to apply when it renders
+	pending_scroll_x   map[string]int
 	run_config         WindowsRunConfig
 	rendering          bool
 	key_consumed       bool
 	pointer_handle     voidptr
+	pointer_binding    WindowsPointerBinding
 	pointer_start_x    int
 	pointer_start_y    int
 	pointer_started    u64
@@ -314,8 +361,10 @@ const windows_state_singleton = &WindowsState{
 	toggle_ids: map[u64]string{}
 	toggle_views: map[u64]voidptr{}
 	scroll_positions: map[string]int{}
+	scroll_positions_x: map[string]int{}
 	node_label_boxed: map[string]bool{}
 	pending_scroll: map[string]int{}
+	pending_scroll_x: map[string]int{}
 	suppress_click: map[u64]bool{}
 }
 
@@ -353,7 +402,7 @@ fn windows_draws_no_background(kind Kind, box BoxStyle) bool {
 //
 // The measured rectangle is what gets remembered, so scrolling the pane it sits in
 // takes the label with it rather than putting it back where it was laid out.
-fn windows_place_label(key string, hwnd voidptr, el Element, y_offset int) {
+fn windows_place_label(key string, hwnd voidptr, el Element, x_offset int, y_offset int) {
 	mut st := windows_state()
 	if C.ui2_win_label_text_hwnd(hwnd) != hwnd {
 		windows_place_held_label(hwnd, el)
@@ -372,8 +421,8 @@ fn windows_place_label(key string, hwnd voidptr, el Element, y_offset int) {
 		}
 	}
 	st.node_frames[key] = placed
-	C.ui2_win_set_widget_frame(hwnd, windows_widget_kind(el.kind), int(placed.x), int(placed.y) +
-		y_offset, int(placed.width), int(placed.height))
+	C.ui2_win_set_widget_frame(hwnd, windows_widget_kind(el.kind), int(placed.x) + x_offset,
+		int(placed.y) + y_offset, int(placed.width), int(placed.height))
 }
 
 // Setting a label's text has to place it again. The label sits on the rectangle the
@@ -384,8 +433,10 @@ fn windows_place_label_text(id string, hwnd voidptr, value string) {
 	key := st.view_keys[id] or { return }
 	frame := st.label_frames[id] or { return }
 	parent_key := st.node_parents[key] or { '' }
+	mut x_offset := 0
 	mut y_offset := 0
 	if (st.node_kinds[parent_key] or { Kind.view }) == .scroll {
+		x_offset = -(st.scroll_positions_x[parent_key] or { 0 })
 		y_offset = -(st.scroll_positions[parent_key] or { 0 })
 	}
 	windows_place_label(key, hwnd, Element{
@@ -394,7 +445,7 @@ fn windows_place_label_text(id string, hwnd voidptr, value string) {
 		frame:      frame
 		box:        st.node_boxes[key] or { BoxStyle{} }
 		text_style: st.node_text_styles[key] or { TextStyle{} }
-	}, y_offset)
+	}, x_offset, y_offset)
 }
 
 fn windows_align(align Align) int {
@@ -460,6 +511,7 @@ fn run_window_with_min_size(title string, width int, height int, min_width int, 
 	}
 	if C.ui2_win_register_classes() == 0 {
 		eprintln('ui2: failed to register Win32 window classes')
+		C.ui2_win_shutdown_accessibility()
 		return
 	}
 	wide_title := title.to_wide()
@@ -467,6 +519,7 @@ fn run_window_with_min_size(title string, width int, height int, min_width int, 
 	unsafe { free(wide_title) }
 	if root == unsafe { nil } {
 		eprintln('ui2: failed to create the Win32 window')
+		C.ui2_win_shutdown_accessibility()
 		return
 	}
 	st.root = root
@@ -479,6 +532,7 @@ fn run_window_with_min_size(title string, width int, height int, min_width int, 
 	C.ui2_win_message_loop()
 	native_remove_tray()
 	windows_dispose_all()
+	C.ui2_win_shutdown_accessibility()
 }
 
 pub fn refresh() {
@@ -513,10 +567,10 @@ pub fn refresh() {
 	mut active := map[string]bool{}
 	if root.kind == .screen {
 		st.node_boxes[''] = root.box
-		windows_render_children(st.root, root.children, '', 0, mut active)
+		windows_render_children(st.root, root.children, '', 0, 0, mut active)
 	} else {
 		st.node_boxes[''] = BoxStyle{}
-		windows_render_element(st.root, root, reconciliation_child_key('', 0, root), '', 0, mut active)
+		windows_render_element(st.root, root, reconciliation_child_key('', 0, root), '', 0, 0, mut active)
 	}
 	windows_remove_stale(active)
 	st.rendering = false
@@ -780,6 +834,14 @@ pub fn scroll_offset(id string) f64 {
 	return f64(st.scroll_positions[key] or { 0 })
 }
 
+// scroll_horizontal_offset returns how far a Scroll element is scrolled sideways. It
+// stays zero for one whose scroll_mode leaves the horizontal axis out.
+pub fn scroll_horizontal_offset(id string) f64 {
+	st := windows_state()
+	key := st.view_keys[id] or { return 0 }
+	return f64(st.scroll_positions_x[key] or { 0 })
+}
+
 // scroll_to_offset puts a Scroll element at the given vertical offset. An element on
 // screen moves at once. One that does not exist yet has no range to clamp against, so
 // the request is kept and taken up the next time the element is laid out — that is
@@ -794,9 +856,8 @@ pub fn scroll_to_offset(id string, offset f64) {
 		key := st.view_keys[id] or { '' }
 		if key.len > 0 {
 			if hwnd := st.views[id] {
-				position := C.ui2_win_set_scroll_position(hwnd, wanted)
-				st.scroll_positions[key] = position
-				windows_reposition_scroll_children(key, position)
+				st.scroll_positions[key] = C.ui2_win_set_scroll_position(hwnd, wanted, 0)
+				windows_reposition_scroll_children(key)
 				st.pending_scroll.delete(id)
 				return
 			}
@@ -805,23 +866,50 @@ pub fn scroll_to_offset(id string, offset f64) {
 	st.pending_scroll[id] = wanted
 }
 
-pub fn scroll_to_rect(id string, _x f64, y f64, _width f64, height f64) {
+// scroll_to_horizontal_offset is scroll_to_offset for the sideways axis, with the same
+// promise: an offset asked for before the element exists is kept until it does. An
+// element that does not scroll sideways has no horizontal bar to move.
+pub fn scroll_to_horizontal_offset(id string, offset f64) {
+	mut st := windows_state()
+	if id.len == 0 {
+		return
+	}
+	wanted := if offset < 0 { 0 } else { int(offset) }
+	if (st.view_kinds[id] or { Kind.view }) == .scroll {
+		key := st.view_keys[id] or { '' }
+		if key.len > 0 {
+			if hwnd := st.views[id] {
+				if key in st.scroll_positions_x {
+					st.scroll_positions_x[key] = C.ui2_win_set_scroll_position(hwnd, wanted, 1)
+					windows_reposition_scroll_children(key)
+				}
+				st.pending_scroll_x.delete(id)
+				return
+			}
+		}
+	}
+	st.pending_scroll_x[id] = wanted
+}
+
+pub fn scroll_to_rect(id string, x f64, y f64, width f64, height f64) {
 	mut st := windows_state()
 	key := st.view_keys[id] or { return }
 	if (st.view_kinds[id] or { Kind.view }) != .scroll {
 		return
 	}
 	hwnd := st.views[id] or { return }
-	position := C.ui2_win_scroll_to_rect(hwnd, int(y), int(y + height))
-	st.scroll_positions[key] = position
-	windows_reposition_scroll_children(key, position)
+	st.scroll_positions[key] = C.ui2_win_scroll_to_rect(hwnd, int(y), int(y + height), 0)
+	if key in st.scroll_positions_x {
+		st.scroll_positions_x[key] = C.ui2_win_scroll_to_rect(hwnd, int(x), int(x + width), 1)
+	}
+	windows_reposition_scroll_children(key)
 }
 
-fn windows_render_children(parent voidptr, children []Element, parent_key string, y_offset int, mut active map[string]bool) {
+fn windows_render_children(parent voidptr, children []Element, parent_key string, x_offset int, y_offset int, mut active map[string]bool) {
 	mut previous := voidptr(unsafe { nil })
 	for index, child in children {
 		key := reconciliation_child_key(parent_key, index, child)
-		hwnd := windows_render_element(parent, child, key, parent_key, y_offset, mut active)
+		hwnd := windows_render_element(parent, child, key, parent_key, x_offset, y_offset, mut active)
 		if hwnd != unsafe { nil } {
 			C.ui2_win_place_after(hwnd, previous)
 			previous = hwnd
@@ -829,7 +917,7 @@ fn windows_render_children(parent voidptr, children []Element, parent_key string
 	}
 }
 
-fn windows_render_element(parent voidptr, el Element, key string, parent_key string, y_offset int, mut active map[string]bool) voidptr {
+fn windows_render_element(parent voidptr, el Element, key string, parent_key string, x_offset int, y_offset int, mut active map[string]bool) voidptr {
 	mut st := windows_state()
 	active[key] = true
 	structural := windows_structural_signature(el)
@@ -853,7 +941,7 @@ fn windows_render_element(parent voidptr, el Element, key string, parent_key str
 		}
 	}
 	if must_create {
-		created := windows_create_element(parent, el, y_offset)
+		created := windows_create_element(parent, el, x_offset, y_offset)
 		if created == unsafe { nil } {
 			eprintln('ui2: failed to create native Windows control `${el.id}` (${el.kind})')
 			return hwnd
@@ -910,41 +998,87 @@ fn windows_render_element(parent voidptr, el Element, key string, parent_key str
 		...el
 		box: visual_box
 		text_style: visual_text_style
-	}, y_offset, must_create)
+	}, x_offset, y_offset, must_create)
 	if el.kind == .label {
 		windows_place_label(key, hwnd, Element{
 			...el
 			text_style: visual_text_style
-		}, y_offset)
+		}, x_offset, y_offset)
 	}
 	windows_register_bindings(hwnd, el)
+	if el.kind == .view {
+		caption := windows_button_accessibility_caption(el.accessibility_label)
+		wide_caption := caption.to_wide()
+		C.ui2_win_configure_accessible_button(hwnd, wide_caption,
+			windows_bool(el.button_behavior))
+		unsafe { free(wide_caption) }
+	}
 	if el.children.len > 0 {
 		if el.kind == .scroll {
-			content_height := windows_content_height(el.children)
-			mut requested := st.scroll_positions[key] or { 0 }
-			if el.id.len > 0 {
-				if pending := st.pending_scroll[el.id] {
-					requested = pending
-					st.pending_scroll.delete(el.id)
-				}
-			}
-			position := C.ui2_win_set_scroll(hwnd, content_height, requested)
-			st.scroll_positions[key] = position
-			windows_render_children(hwnd, el.children, key, -position, mut active)
+			x_position, position := windows_layout_scroll(hwnd, el, key)
+			windows_render_children(hwnd, el.children, key, -x_position, -position, mut active)
 		} else {
-			windows_render_children(hwnd, el.children, key, 0, mut active)
+			windows_render_children(hwnd, el.children, key, 0, 0, mut active)
 		}
 	} else if el.kind == .scroll {
-		st.scroll_positions[key] = C.ui2_win_set_scroll(hwnd, 0, 0)
+		st.scroll_positions[key] = C.ui2_win_set_scroll(hwnd, 0, 0, 0)
+		if key in st.scroll_positions_x {
+			st.scroll_positions_x[key] = C.ui2_win_set_scroll(hwnd, 0, 0, 1)
+		}
 	}
 	return hwnd
 }
 
-fn windows_create_element(parent voidptr, el Element, y_offset int) voidptr {
+// windows_layout_scroll sets a Scroll element's bars to cover its children along the
+// axes its mode scrolls, taking up a position asked for before it was laid out, and
+// returns where each bar settled. The horizontal bar is left alone on an element that
+// has never scrolled sideways.
+fn windows_layout_scroll(hwnd voidptr, el Element, key string) (int, int) {
+	mut st := windows_state()
+	scrolls_x := el.scroll_mode != .vertical_only
+	content_height := if el.scroll_mode != .horizontal_only {
+		windows_content_height(el.children)
+	} else {
+		0
+	}
+	mut requested := st.scroll_positions[key] or { 0 }
+	mut requested_x := st.scroll_positions_x[key] or { 0 }
+	if el.id.len > 0 {
+		if pending := st.pending_scroll[el.id] {
+			requested = pending
+			st.pending_scroll.delete(el.id)
+		}
+		if pending := st.pending_scroll_x[el.id] {
+			requested_x = pending
+			st.pending_scroll_x.delete(el.id)
+		}
+	}
+	mut position := 0
+	mut x_position := 0
+	if scrolls_x || key in st.scroll_positions_x {
+		// Each bar takes room from the axis the other pages over, so the two are
+		// settled together rather than one from what the other happened to leave.
+		content_width := if scrolls_x { int(scroll_content_width(el.children)) } else { 0 }
+		C.ui2_win_set_scroll_both(hwnd, content_width, content_height, requested_x, requested)
+		x_position = C.ui2_win_scroll_position(hwnd, 1)
+		position = C.ui2_win_scroll_position(hwnd, 0)
+		if scrolls_x {
+			st.scroll_positions_x[key] = x_position
+		} else {
+			st.scroll_positions_x.delete(key)
+		}
+	} else {
+		position = C.ui2_win_set_scroll(hwnd, content_height, requested, 0)
+	}
+	st.scroll_positions[key] = position
+	return x_position, position
+}
+
+fn windows_create_element(parent voidptr, el Element, x_offset int, y_offset int) voidptr {
 	wide := el.text.to_wide()
 	boxed := label_needs_container(el)
 	mut host := parent
-	mut x := int(el.frame.x)
+	mut x := int(el.frame.x) + x_offset
 	mut y := int(el.frame.y) + y_offset
 	mut container := voidptr(unsafe { nil })
 	if boxed {
@@ -1054,9 +1188,15 @@ fn windows_options_signature(entries []MenuEntry) string {
 	return parts.join('|')
 }
 
-fn windows_update_element(key string, hwnd voidptr, el Element, y_offset int, created bool) {
+fn windows_button_accessibility_caption(label string) string {
+	// The standard BUTTON proxy treats ampersands as access-key markers.
+	// Escape them so an accessibility label remains literal text.
+	return label.replace('&', '&&')
+}
+
+fn windows_update_element(key string, hwnd voidptr, el Element, x_offset int, y_offset int, created bool) {
 	mut st := windows_state()
-	C.ui2_win_set_widget_frame(hwnd, windows_widget_kind(el.kind), int(el.frame.x), int(el.frame.y) + y_offset, int(el.frame.width), int(el.frame.height))
+	C.ui2_win_set_widget_frame(hwnd, windows_widget_kind(el.kind), int(el.frame.x) + x_offset, int(el.frame.y) + y_offset, int(el.frame.width), int(el.frame.height))
 	C.ui2_win_show(hwnd, windows_bool(!el.hidden))
 	C.ui2_win_enable(hwnd, windows_bool(el.enabled))
 	declared_changed := (st.node_declared_text[key] or { '' }) != el.text
@@ -1266,13 +1406,16 @@ fn windows_register_bindings(hwnd voidptr, el Element) {
 	if el.submit_id.len > 0 && el.kind == .text_field {
 		st.submit_ids[handle] = el.submit_id
 	}
-	if el.clickable || el.draggable || el.long_press || el.swipe_left {
+	if el.enabled && !el.hidden
+		&& (el.clickable || (el.kind == .view && el.button_behavior) || el.draggable
+		|| el.long_press || el.swipe_left) {
 		st.pointer_bindings[handle] = WindowsPointerBinding{
-			id: action_id
-			clickable: el.clickable
-			draggable: el.draggable
-			long_press: el.long_press
-			swipe_left: el.swipe_left
+			id:              action_id
+			clickable:       el.clickable
+			button_behavior: el.kind == .view && el.button_behavior
+			draggable:       el.draggable
+			long_press:      el.long_press
+			swipe_left:      el.swipe_left
 		}
 	}
 	if el.menu.len > 0 {
@@ -1311,6 +1454,11 @@ fn windows_reparent_direct_children(key string, new_parent voidptr) {
 
 fn windows_cleanup_node_resources(key string, hwnd voidptr, kind Kind) {
 	mut st := windows_state()
+	if st.pointer_handle == hwnd {
+		C.ui2_win_release_mouse()
+		st.pointer_handle = unsafe { nil }
+		st.pointer_binding = WindowsPointerBinding{}
+	}
 	if kind == .image {
 		bitmap := st.images[key] or { voidptr(unsafe { nil }) }
 		if hwnd != unsafe { nil } && C.ui2_win_is_window(hwnd) != 0 {
@@ -1378,6 +1526,7 @@ fn windows_remove_stale(active map[string]bool) {
 		st.node_label_boxed.delete(key)
 		st.node_text_styles.delete(key)
 		st.scroll_positions.delete(key)
+		st.scroll_positions_x.delete(key)
 	}
 }
 
@@ -1395,8 +1544,10 @@ fn windows_release_all_node_resources() {
 	}
 }
 
-fn windows_reposition_scroll_children(scroll_key string, position int) {
+fn windows_reposition_scroll_children(scroll_key string) {
 	st := windows_state()
+	x_position := st.scroll_positions_x[scroll_key] or { 0 }
+	position := st.scroll_positions[scroll_key] or { 0 }
 	for child_key, parent_key in st.node_parents {
 		if parent_key != scroll_key {
 			continue
@@ -1404,32 +1555,82 @@ fn windows_reposition_scroll_children(scroll_key string, position int) {
 		hwnd := st.nodes[child_key] or { continue }
 		frame := st.node_frames[child_key] or { continue }
 		kind := st.node_kinds[child_key] or { Kind.view }
-		C.ui2_win_set_widget_frame(hwnd, windows_widget_kind(kind), int(frame.x), int(frame.y) - position, int(frame.width), int(frame.height))
+		C.ui2_win_set_widget_frame(hwnd, windows_widget_kind(kind), int(frame.x) - x_position,
+			int(frame.y) - position, int(frame.width), int(frame.height))
 	}
 	C.ui2_win_invalidate(st.nodes[scroll_key] or { return })
 }
 
-fn windows_handle_scroll(hwnd voidptr, wparam usize, wheel bool) {
-	mut st := windows_state()
-	key := st.handle_keys[windows_handle_id(hwnd)] or { return }
-	if (st.node_kinds[key] or { Kind.view }) != .scroll {
-		return
+// windows_handle_wheel scrolls the Scroll element a wheel message reached, then gives
+// whatever distance it could not use to each pane around it in turn, the way the
+// custom renderer walks its scroll chain. A pane ten pixels from its end takes those
+// ten and the pane around it the rest of the step, so nested panes scroll through a
+// boundary instead of stopping short at it.
+fn windows_handle_wheel(hwnd voidptr, message u32, wparam usize) {
+	tilt := message == win_wm_mouse_hwheel
+	// Shift turns a plain wheel sideways.
+	horizontal := tilt || C.ui2_win_wheel_is_shifted(wparam) != 0
+	distance := C.ui2_win_wheel_distance(wparam, windows_bool(tilt), windows_bool(horizontal))
+	mut remaining := distance - windows_scroll_by(hwnd, distance, horizontal)
+	mut pane := C.ui2_win_scroll_parent(hwnd, windows_bool(horizontal))
+	for remaining != 0 && pane != unsafe { nil } {
+		remaining -= windows_scroll_by(pane, remaining, horizontal)
+		pane = C.ui2_win_scroll_parent(pane, windows_bool(horizontal))
 	}
-	old_position := st.scroll_positions[key] or { 0 }
-	position := if wheel {
-		C.ui2_win_scroll_wheel(hwnd, wparam)
+}
+
+// windows_scroll_key is the key of the Scroll element behind a window, when it is one
+// and scrolls along the axis.
+fn windows_scroll_key(hwnd voidptr, horizontal bool) ?string {
+	st := windows_state()
+	key := st.handle_keys[windows_handle_id(hwnd)] or { return none }
+	if (st.node_kinds[key] or { Kind.view }) != .scroll {
+		return none
+	}
+	// An element that does not scroll sideways has no horizontal bar to read or move.
+	if horizontal && key !in st.scroll_positions_x {
+		return none
+	}
+	return key
+}
+
+// windows_scroll_by moves a Scroll element along an axis and returns how far it went.
+fn windows_scroll_by(hwnd voidptr, distance int, horizontal bool) int {
+	key := windows_scroll_key(hwnd, horizontal) or { return 0 }
+	return windows_record_scroll(hwnd, key, C.ui2_win_scroll_by(hwnd, distance, windows_bool(horizontal)),
+		horizontal)
+}
+
+// windows_handle_scroll follows one of a Scroll element's own bars.
+fn windows_handle_scroll(hwnd voidptr, wparam usize, horizontal bool) {
+	key := windows_scroll_key(hwnd, horizontal) or { return }
+	windows_record_scroll(hwnd, key, C.ui2_win_scroll_message(hwnd, wparam, windows_bool(horizontal)),
+		horizontal)
+}
+
+// windows_record_scroll takes up the position a Scroll element's bar settled at: it
+// moves the children to match, reports the change, and returns how far that was.
+fn windows_record_scroll(hwnd voidptr, key string, position int, horizontal bool) int {
+	mut st := windows_state()
+	old_position := if horizontal {
+		st.scroll_positions_x[key] or { 0 }
 	} else {
-		C.ui2_win_scroll_message(hwnd, wparam)
+		st.scroll_positions[key] or { 0 }
 	}
 	if position == old_position {
-		return
+		return 0
 	}
-	st.scroll_positions[key] = position
-	windows_reposition_scroll_children(key, position)
+	if horizontal {
+		st.scroll_positions_x[key] = position
+	} else {
+		st.scroll_positions[key] = position
+	}
+	windows_reposition_scroll_children(key)
 	id := st.scroll_ids[windows_handle_id(hwnd)] or { '' }
 	if id.len > 0 && voidptr(st.scroll_handler) != unsafe { nil } {
 		st.scroll_handler(id)
 	}
+	return position - old_position
 }
 
 fn windows_emit_action(id string) {
@@ -1437,6 +1638,33 @@ fn windows_emit_action(id string) {
 	if id.len > 0 && voidptr(st.event_handler) != unsafe { nil } {
 		st.event_handler(id)
 	}
+}
+
+fn windows_emit_button_behavior_action(hwnd voidptr, id string) bool {
+	st := windows_state()
+	if id.len == 0 || voidptr(st.event_handler) == unsafe { nil } {
+		return false
+	}
+	C.ui2_win_notify_invoked(hwnd)
+	st.event_handler(id)
+	return true
+}
+
+fn windows_button_behavior_accessibility_action(current WindowsPointerBinding, target_available bool) string {
+	if current.button_behavior && current.id.len > 0 && target_available {
+		return current.id
+	}
+	return ''
+}
+
+@[export: 'ui2_windows_accessibility_activate']
+fn ui2_windows_accessibility_activate(hwnd voidptr) int {
+	st := windows_state()
+	current := st.pointer_bindings[windows_handle_id(hwnd)] or { WindowsPointerBinding{} }
+	action := windows_button_behavior_accessibility_action(current,
+		C.ui2_win_is_window(hwnd) != 0 && C.ui2_win_is_enabled(hwnd) != 0
+		&& C.ui2_win_is_accessible_button(hwnd) != 0)
+	return windows_bool(windows_emit_button_behavior_action(hwnd, action))
 }
 
 fn windows_snap_slider_value(hwnd voidptr, spec SliderSpec) f64 {
@@ -1702,6 +1930,14 @@ fn ui2_windows_window_proc(hwnd voidptr, message u32, wparam usize, lparam isize
 				C.ui2_win_paint_background(hwnd, box.bg, box.radius, transparent,
 					box.border_color, box.border_left, box.border_top, box.border_right,
 					box.border_bottom)
+				if kind == .view {
+					binding := st.pointer_bindings[windows_handle_id(hwnd)] or {
+						WindowsPointerBinding{}
+					}
+					if binding.button_behavior {
+						C.ui2_win_draw_focus_rect(hwnd)
+					}
+				}
 				return 0
 			}
 		}
@@ -1725,19 +1961,38 @@ fn ui2_windows_window_proc(hwnd voidptr, message u32, wparam usize, lparam isize
 					return 0
 				}
 			}
-			if message == win_wm_hscroll {
+			// A control's own bar is the control's to handle; one with no control behind
+			// it is the standard bar of a Scroll element.
+			if message == win_wm_hscroll && child != unsafe { nil } {
 				return C.ui2_win_default_proc(hwnd, message, wparam, lparam)
 			}
-			windows_handle_scroll(hwnd, wparam, false)
+			windows_handle_scroll(hwnd, wparam, message == win_wm_hscroll)
 			return 0
 		}
-		win_wm_mouse_wheel {
-			windows_handle_scroll(hwnd, wparam, true)
+		win_wm_mouse_wheel, win_wm_mouse_hwheel {
+			windows_handle_wheel(hwnd, message, wparam)
 			return 0
 		}
 		win_wm_key_down {
 			if windows_dispatch_key(u32(wparam)) {
 				return 0
+			}
+			if wparam == 0x09
+				&& C.ui2_win_focus_next(hwnd, windows_bool(C.ui2_win_key_down(0x10) != 0)) != 0 {
+				return 0
+			}
+			if wparam in [usize(0x0d), usize(0x20)]
+				&& (usize(lparam) & (usize(1) << 30)) == 0 {
+				binding := st.pointer_bindings[windows_handle_id(hwnd)] or {
+					WindowsPointerBinding{}
+				}
+				action := windows_button_behavior_accessibility_action(binding,
+					C.ui2_win_is_window(hwnd) != 0 && C.ui2_win_is_enabled(hwnd) != 0
+					&& C.ui2_win_is_accessible_button(hwnd) != 0)
+				if action.len > 0 {
+					C.ui2_win_click(hwnd)
+					return 0
+				}
 			}
 		}
 		win_wm_dropfiles {
@@ -1893,23 +2148,36 @@ fn ui2_windows_cursor(hwnd voidptr) int {
 @[export: 'ui2_windows_control_pointer']
 fn ui2_windows_control_pointer(hwnd voidptr, message u32, local_x int, local_y int) {
 	mut st := windows_state()
-	mut target := hwnd
-	mut binding := WindowsPointerBinding{}
-	for target != unsafe { nil } {
-		binding = st.pointer_bindings[windows_handle_id(target)] or { WindowsPointerBinding{} }
-		if binding.id.len > 0 || target == st.root {
-			break
-		}
-		target = C.ui2_win_parent(target)
-	}
-	if binding.id.len == 0 {
-		return
-	}
 	mut x := local_x
 	mut y := local_y
 	C.ui2_win_point_to_root(hwnd, st.root, &x, &y)
 	if message == win_wm_lbutton_down {
+		mut target := voidptr(usize(hwnd))
+		mut binding := WindowsPointerBinding{}
+		for target != unsafe { nil } {
+			handle := windows_handle_id(target)
+			binding = st.pointer_bindings[handle] or { WindowsPointerBinding{} }
+			if binding.id.len > 0 || target == st.root {
+				break
+			}
+			key := st.handle_keys[handle] or { '' }
+			if key.len > 0 {
+				kind := st.node_kinds[key] or { Kind.screen }
+				if kind !in [.screen, .view, .label, .image] {
+					// A nested native control owns its pointer interaction.
+					return
+				}
+			}
+			target = C.ui2_win_parent(target)
+		}
+		if binding.id.len == 0 {
+			return
+		}
+		if binding.button_behavior {
+			C.ui2_win_focus(target)
+		}
 		st.pointer_handle = target
+		st.pointer_binding = binding
 		st.pointer_start_x = x
 		st.pointer_start_y = y
 		st.pointer_started = C.ui2_win_ticks()
@@ -1920,9 +2188,11 @@ fn ui2_windows_control_pointer(hwnd voidptr, message u32, local_x int, local_y i
 		}
 		return
 	}
-	if st.pointer_handle != target {
+	if st.pointer_handle == unsafe { nil } {
 		return
 	}
+	target := st.pointer_handle
+	binding := st.pointer_binding
 	if message == win_wm_mouse_move {
 		move_x := x - st.pointer_start_x
 		move_y := y - st.pointer_start_y
@@ -1939,24 +2209,45 @@ fn ui2_windows_control_pointer(hwnd voidptr, message u32, local_x int, local_y i
 	}
 	C.ui2_win_release_mouse()
 	st.pointer_handle = unsafe { nil }
+	st.pointer_binding = WindowsPointerBinding{}
 	delta_x := x - st.pointer_start_x
 	delta_y := y - st.pointer_start_y
 	duration := C.ui2_win_ticks() - st.pointer_started
 	mut gesture := false
+	mut gesture_event := ''
 	if binding.swipe_left && delta_x <= -60 && delta_y >= -40 && delta_y <= 40 {
-		windows_emit_action('swipe_left:' + binding.id)
+		gesture_event = 'swipe_left:' + binding.id
 		gesture = true
 	} else if binding.long_press && !st.pointer_moved && duration >= 500 && delta_x >= -8 && delta_x <= 8
 		&& delta_y >= -8 && delta_y <= 8 {
-		windows_emit_action('long:' + binding.id)
+		gesture_event = 'long:' + binding.id
 		gesture = true
+	}
+	current_binding := st.pointer_bindings[windows_handle_id(target)] or { WindowsPointerBinding{} }
+	button_action := windows_button_behavior_action(binding, current_binding, gesture,
+		st.pointer_moved, C.ui2_win_is_window(target) != 0
+		&& C.ui2_win_is_enabled(target) != 0
+		&& C.ui2_win_root_point_in_client(st.root, target, x, y) != 0)
+	if gesture_event.len > 0 {
+		windows_emit_action(gesture_event)
 	}
 	if binding.clickable || binding.draggable {
 		windows_emit_action('pointer:up:${binding.id}:${x}:${y}')
 	}
+	if button_action.len > 0 {
+		windows_emit_button_behavior_action(target, button_action)
+	}
 	if gesture {
 		st.suppress_click[windows_handle_id(target)] = true
 	}
+}
+
+fn windows_button_behavior_action(captured WindowsPointerBinding, current WindowsPointerBinding, gesture bool, moved bool, target_available bool) string {
+	if captured.button_behavior && captured.id.len > 0 && current.button_behavior
+		&& current.id.len > 0 && !gesture && !moved && target_available {
+		return captured.id
+	}
+	return ''
 }
 
 fn windows_text_area_handle(id string) ?voidptr {

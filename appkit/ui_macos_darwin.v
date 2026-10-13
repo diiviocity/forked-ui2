@@ -25,6 +25,8 @@ struct C.ui2_macos_rect {
 
 fn C.ui2_macos_msg_rect_rect(obj voidptr, sel voidptr, rect C.ui2_macos_rect) C.ui2_macos_rect
 
+fn C.ui2_macos_msg_super_void_id(obj voidptr, superclass voidptr, sel voidptr, arg voidptr)
+
 const ns_window_style_titled = u64(1)
 const ns_window_style_closable = u64(2)
 const ns_window_style_miniaturizable = u64(4)
@@ -102,7 +104,14 @@ mut:
 	textview_action_ids map[u64]string // NSTextView pointer -> change event id
 	scroll_ids          map[u64]string // NSClipView pointer -> Scroll element id
 	pointer_ids         map[u64]string // NSView pointer -> element id
+	pointer_clickable   map[u64]bool
+	pointer_buttons     map[u64]bool
 	pointer_draggable   map[u64]bool
+	pointer_button_down u64
+	pointer_button_x    f64
+	pointer_button_y    f64
+	pointer_button_moved bool
+	pointer_button_id   string
 	cursor_ids          map[u64]string // NSView pointer -> cursor name
 	control_ids         map[u64]string // NSControl pointer -> action event id
 	checkbox_controls   map[u64]bool // NSButton pointers whose state is persistent
@@ -114,6 +123,8 @@ mut:
 	control_change_ids  map[u64]string // NSTextField pointer -> change event id
 	observed            map[u64]bool // clip views we already observe for scroll changes
 	pending_scroll      map[string]f64 // Scroll element id -> offset to apply once it exists
+	pending_scroll_x    map[string]f64 // the same, for the sideways axis
+	scroll_forwarding   map[u64]bool // NSScrollView pointer -> the gesture under way belongs to an enclosing Scroll
 	run_config          RunConfig
 	screenshot_pending  bool
 	screenshot_captured bool
@@ -142,7 +153,11 @@ const runtime_state_singleton = &RuntimeState{
 	textview_action_ids: map[u64]string{}
 	scroll_ids: map[u64]string{}
 	pending_scroll: map[string]f64{}
+	pending_scroll_x: map[string]f64{}
+	scroll_forwarding: map[u64]bool{}
 	pointer_ids: map[u64]string{}
+	pointer_clickable: map[u64]bool{}
+	pointer_buttons: map[u64]bool{}
 	pointer_draggable: map[u64]bool{}
 	cursor_ids: map[u64]string{}
 	control_ids: map[u64]string{}
@@ -333,7 +348,21 @@ pub fn scroll_offset(id string) f64 {
 	return r.y
 }
 
-// scroll_to_rect scrolls a Scroll element so the given document rect is visible.
+// scroll_horizontal_offset returns how far a Scroll element is scrolled sideways. It
+// stays zero for one whose scroll_mode leaves the horizontal axis out.
+pub fn scroll_horizontal_offset(id string) f64 {
+	st := state()
+	scrollv := st.views[id] or { return 0 }
+	if !scroll_view_has_axis(scrollv, true) {
+		return 0
+	}
+	r := macos.msg_rect(scrollv, 'documentVisibleRect')
+	return r.x
+}
+
+// scroll_to_rect scrolls a Scroll element so the given document rect is visible. Along
+// an axis the element does not scroll, the rect is taken to be what already shows from
+// the start, so bringing it into view never moves the element that way.
 pub fn scroll_to_rect(id string, x f64, y f64, width f64, height f64) {
 	st := state()
 	scrollv := st.views[id] or { return }
@@ -341,7 +370,23 @@ pub fn scroll_to_rect(id string, x f64, y f64, width f64, height f64) {
 	if native_is_nil(doc) {
 		return
 	}
-	macos.msg_void_rect(doc, 'scrollRectToVisible:', macos.rect(x, y, width, height))
+	visible := macos.msg_rect(macos.msg_id(scrollv, 'contentView'), 'bounds')
+	across := scroll_view_has_axis(scrollv, true)
+	down := scroll_view_has_axis(scrollv, false)
+	macos.msg_void_rect(doc, 'scrollRectToVisible:', macos.rect(if across { x } else { 0.0 },
+		if down { y } else { 0.0 }, if across { width } else { visible.width }, if down {
+		height
+	} else {
+		visible.height
+	}))
+}
+
+// scroll_view_has_axis reports whether a scroll view's mode scrolls an axis. One it
+// leaves out can still have a range in AppKit's eyes: a scroller that takes room of
+// its own leaves the document that much longer than what shows of it. That is not
+// somewhere to scroll to, so no position along such an axis is reported or asked for.
+fn scroll_view_has_axis(scroll NativeView, horizontal bool) bool {
+	return macos.msg_bool(scroll, if horizontal { 'hasHorizontalScroller' } else { 'hasVerticalScroller' })
 }
 
 // scroll_to_offset puts a Scroll element at the given vertical offset. Asking for a
@@ -357,20 +402,38 @@ pub fn scroll_to_offset(id string, offset f64) {
 	apply_scroll_offset(mut st, id)
 }
 
+// scroll_to_horizontal_offset is scroll_to_offset for the sideways axis, with the same
+// promise: an offset asked for before the element exists is kept until it does.
+pub fn scroll_to_horizontal_offset(id string, offset f64) {
+	mut st := state()
+	if id.len == 0 {
+		return
+	}
+	st.pending_scroll_x[id] = offset
+	apply_scroll_offset(mut st, id)
+}
+
 fn apply_scroll_offset(mut st RuntimeState, id string) {
-	offset := st.pending_scroll[id] or { return }
+	if id !in st.pending_scroll && id !in st.pending_scroll_x {
+		return
+	}
 	scrollv := st.views[id] or { return }
 	doc := macos.msg_id(scrollv, 'documentView')
 	if native_is_nil(doc) {
 		return
 	}
 	clip := macos.msg_id(scrollv, 'contentView')
-	height := macos.msg_rect(clip, 'bounds').height
-	// A rect as tall as the visible area lands its top edge at the top of the view,
+	visible := macos.msg_rect(clip, 'bounds')
+	// A rect the size of the visible area lands its corner at the corner of the view,
 	// which is the offset that was asked for. The scroll view clamps it to the
-	// document, so an offset past the end settles at the end.
-	macos.msg_void_rect(doc, 'scrollRectToVisible:', macos.rect(0, offset, 1, height))
+	// document, so an offset past the end settles at the end. An axis nothing was
+	// asked of keeps the position it is at, and one the element does not scroll stays
+	// at its start whatever was asked.
+	x := if scroll_view_has_axis(scrollv, true) { st.pending_scroll_x[id] or { visible.x } } else { 0.0 }
+	y := if scroll_view_has_axis(scrollv, false) { st.pending_scroll[id] or { visible.y } } else { 0.0 }
+	macos.msg_void_rect(doc, 'scrollRectToVisible:', macos.rect(x, y, visible.width, visible.height))
 	st.pending_scroll.delete(id)
+	st.pending_scroll_x.delete(id)
 }
 
 pub fn text(id string) string {
@@ -829,13 +892,27 @@ fn ensure_runtime_classes() {
 		macos.add_method(cls, 'performDragOperation:', voidptr(ui2_perform_drag_operation), 'B@:@')
 		macos.register_class_pair(cls)
 	}
+	if macos.get_class('UI2ScrollView') == unsafe { nil } {
+		cls := macos.allocate_class_pair(macos.get_class('NSScrollView'), 'UI2ScrollView')
+		macos.add_method(cls, 'scrollWheel:', voidptr(ui2_scroll_view_scroll_wheel), 'v@:@')
+		macos.register_class_pair(cls)
+	}
 	if macos.get_class('UI2PointerView') == unsafe { nil } {
 		cls := macos.allocate_class_pair(macos.get_class('NSView'), 'UI2PointerView')
 		macos.add_method(cls, 'isFlipped', voidptr(ui2_view_is_flipped), 'B@:')
 		macos.add_method(cls, 'mouseDown:', voidptr(ui2_pointer_mouse_down), 'v@:@')
 		macos.add_method(cls, 'mouseDragged:', voidptr(ui2_pointer_mouse_dragged), 'v@:@')
 		macos.add_method(cls, 'mouseUp:', voidptr(ui2_pointer_mouse_up), 'v@:@')
+		macos.add_method(cls, 'accessibilityPerformPress', voidptr(ui2_pointer_accessibility_press),
+			'B@:')
 		macos.add_method(cls, 'resetCursorRects', voidptr(ui2_pointer_reset_cursor_rects), 'v@:')
+		macos.register_class_pair(cls)
+	}
+	if macos.get_class('UI2PointerChildView') == unsafe { nil } {
+		cls := macos.allocate_class_pair(macos.get_class('UI2FlippedView'), 'UI2PointerChildView')
+		macos.add_method(cls, 'mouseDown:', voidptr(ui2_pointer_mouse_down), 'v@:@')
+		macos.add_method(cls, 'mouseDragged:', voidptr(ui2_pointer_mouse_dragged), 'v@:@')
+		macos.add_method(cls, 'mouseUp:', voidptr(ui2_pointer_mouse_up), 'v@:@')
 		macos.register_class_pair(cls)
 	}
 	if macos.get_class('UI2PointerImageView') == unsafe { nil } {
@@ -844,6 +921,13 @@ fn ensure_runtime_classes() {
 		macos.add_method(cls, 'mouseDragged:', voidptr(ui2_pointer_mouse_dragged), 'v@:@')
 		macos.add_method(cls, 'mouseUp:', voidptr(ui2_pointer_mouse_up), 'v@:@')
 		macos.add_method(cls, 'resetCursorRects', voidptr(ui2_pointer_reset_cursor_rects), 'v@:')
+		macos.register_class_pair(cls)
+	}
+	if macos.get_class('UI2PointerLabel') == unsafe { nil } {
+		cls := macos.allocate_class_pair(macos.get_class('NSTextField'), 'UI2PointerLabel')
+		macos.add_method(cls, 'mouseDown:', voidptr(ui2_pointer_mouse_down), 'v@:@')
+		macos.add_method(cls, 'mouseDragged:', voidptr(ui2_pointer_mouse_dragged), 'v@:@')
+		macos.add_method(cls, 'mouseUp:', voidptr(ui2_pointer_mouse_up), 'v@:@')
 		macos.register_class_pair(cls)
 	}
 	if macos.get_class('UI2AppDelegate') == unsafe { nil } {
@@ -902,6 +986,8 @@ fn render_root(declared Element) {
 	st.view_kinds = map[string]Kind{}
 	st.text_area_direct = map[string]bool{}
 	st.pointer_ids = map[u64]string{}
+	st.pointer_clickable = map[u64]bool{}
+	st.pointer_buttons = map[u64]bool{}
 	st.pointer_draggable = map[u64]bool{}
 	st.cursor_ids = map[u64]string{}
 	st.control_ids = map[u64]string{}
@@ -1085,18 +1171,21 @@ fn render_element(parent NativeView, el Element, key string, mut active map[stri
 			}
 			doc_key := key + '/document'
 			active[doc_key] = true
-			doc_h := content_height(el.children) + 16
 			mut doc := st.nodes[doc_key] or { native_nil_view() }
 			if native_is_nil(doc) {
-				doc = native_new_flipped_view(native_rect(0, 0, el.frame.width, doc_h), el.box)
+				doc = native_new_flipped_view(native_rect(0, 0, el.frame.width, el.frame.height),
+					el.box)
 				st.nodes[doc_key] = doc
 				st.node_kinds[doc_key] = .view
+				native_size_scroll_document(native, doc, el)
 				native_set_document_view(native, doc)
 				macos.release(doc)
 			} else {
-				native_set_frame(doc, native_rect(0, 0, el.frame.width, doc_h))
 				native_set_box_background(doc, el.box)
 			}
+			// Attaching a document lays the scrollers out, so what shows of a new one is
+			// only settled from here.
+			native_size_scroll_document(native, doc, el)
 			render_children(doc, el.children, doc_key, mut active)
 		}
 		.button {
@@ -1253,7 +1342,8 @@ fn native_create_element(el Element) NativeView {
 			native_new_view(element_rect(el.frame), el.box, element_interactive(el))
 		}
 		.scroll {
-			native_new_scroll(element_rect(el.frame), el.box, el.persistent_scrollbars)
+			native_new_scroll(element_rect(el.frame), el.box, el.persistent_scrollbars,
+				el.scroll_mode)
 		}
 		.label {
 			native_new_label(element_rect(el.frame), el.text, el.text_style.color, el.text_style.size, el.text_style.bold, el.text_style.italic, el.text_style.underline, align_value(el.text_style.align), el.text_style.lines, el.text_style.valign, label_needs_container(el))
@@ -1299,6 +1389,7 @@ fn native_update_element(native NativeView, el Element, declared_text_changed bo
 		.scroll {
 			native_set_frame(native, element_rect(el.frame))
 			native_set_scroll_background(native, el.box)
+			native_set_scroll_axes(native, el.scroll_mode)
 			native_set_scrollbar_mode(native, el.persistent_scrollbars)
 		}
 		.label {
@@ -1337,17 +1428,23 @@ fn native_update_element(native NativeView, el Element, declared_text_changed bo
 }
 
 fn element_interactive(el Element) bool {
-	return el.clickable || el.draggable || el.cursor.len > 0
+	return el.clickable || (el.kind == .view && el.button_behavior) || el.draggable
+		|| el.cursor.len > 0
 }
 
 fn register_pointer(native NativeView, el Element) {
 	mut st := state()
 	key := u64(voidptr(native))
 	st.pointer_ids.delete(key)
+	st.pointer_clickable.delete(key)
+	st.pointer_buttons.delete(key)
 	st.pointer_draggable.delete(key)
 	st.cursor_ids.delete(key)
-	if el.enabled && element_action_id(el).len > 0 && (el.clickable || el.draggable) {
+	if el.enabled && !el.hidden && element_action_id(el).len > 0
+		&& (el.clickable || (el.kind == .view && el.button_behavior) || el.draggable) {
 		st.pointer_ids[key] = element_action_id(el)
+		st.pointer_clickable[key] = el.clickable
+		st.pointer_buttons[key] = el.kind == .view && el.button_behavior
 		st.pointer_draggable[key] = el.draggable
 	}
 	if el.cursor.len > 0 {
@@ -1465,7 +1562,14 @@ fn register_control(native NativeView, id string, submit_id string, emit_change 
 fn unregister_node(key string, native NativeView, kind Kind, text_direct bool) {
 	mut st := state()
 	pointer := u64(voidptr(native))
+	if st.pointer_button_down == pointer {
+		st.pointer_button_down = 0
+		st.pointer_button_moved = false
+		st.pointer_button_id = ''
+	}
 	st.pointer_ids.delete(pointer)
+	st.pointer_clickable.delete(pointer)
+	st.pointer_buttons.delete(pointer)
 	st.pointer_draggable.delete(pointer)
 	st.cursor_ids.delete(pointer)
 	st.control_ids.delete(pointer)
@@ -1489,6 +1593,7 @@ fn unregister_node(key string, native NativeView, kind Kind, text_direct bool) {
 		}
 	}
 	if kind == .scroll {
+		st.scroll_forwarding.delete(u64(voidptr(native)))
 		clip := macos.msg_id(native, 'contentView')
 		clip_pointer := u64(voidptr(clip))
 		st.scroll_ids.delete(clip_pointer)
@@ -1682,6 +1787,59 @@ fn content_height(children []Element) f64 {
 	return h
 }
 
+// native_size_scroll_document gives a Scroll element's document the size its content
+// and what shows of it call for. The mask goes on first: sizing the document can bring
+// a scroller in or take one away, which changes what shows, and a side held to that
+// has to follow it rather than keep the length measured a moment earlier.
+fn native_size_scroll_document(scroll NativeView, doc NativeView, el Element) {
+	shown := macos.msg_rect(macos.msg_id(scroll, 'contentView'), 'bounds')
+	document := scroll_document_size(el, shown.width, shown.height)
+	macos.msg_void_u64(doc, 'setAutoresizingMask:', document.autoresizing_mask())
+	native_set_frame(doc, native_rect(0, 0, document.width, document.height))
+}
+
+// ScrollDocument is the size of the view a Scroll element scrolls over, and which of
+// its sides are as long as what shows rather than as long as the content.
+struct ScrollDocument {
+	width          f64
+	height         f64
+	follows_width  bool
+	follows_height bool
+}
+
+fn (document ScrollDocument) autoresizing_mask() u64 {
+	mut mask := u64(0)
+	if document.follows_width {
+		mask |= ns_view_width_sizable
+	}
+	if document.follows_height {
+		mask |= ns_view_height_sizable
+	}
+	return mask
+}
+
+// scroll_document_size sizes the view a Scroll element scrolls over. An axis its mode
+// scrolls covers the content and is never shorter than what shows; one it leaves out
+// is held to what shows, so there is nothing along it to scroll to. What shows is
+// measured from the scroll view rather than taken from the frame, because a scroller
+// that takes room of its own makes it less, and a document sized to the frame would
+// then have a range the width of that scroller: one a wheel could push the element
+// into along an axis it is not meant to scroll.
+fn scroll_document_size(el Element, visible_width f64, visible_height f64) ScrollDocument {
+	shown_width := if visible_width > 0 { visible_width } else { el.frame.width }
+	shown_height := if visible_height > 0 { visible_height } else { el.frame.height }
+	scrolls_x := el.scroll_mode != .vertical_only
+	scrolls_y := el.scroll_mode != .horizontal_only
+	content_width := if scrolls_x { scroll_content_width(el.children) } else { 0.0 }
+	fits_across := content_width <= shown_width
+	return ScrollDocument{
+		width:          if fits_across { shown_width } else { content_width }
+		height:         if scrolls_y { content_height(el.children) + 16 } else { shown_height }
+		follows_width:  fits_across
+		follows_height: !scrolls_y
+	}
+}
+
 fn assoc_handler_key() voidptr {
 	return voidptr(macos.sel('ui2_button_handler_assoc'))
 }
@@ -1800,19 +1958,31 @@ fn native_new_flipped_view(frame NativeRect, box BoxStyle) NativeView {
 }
 
 fn native_new_view(frame NativeRect, box BoxStyle, interactive bool) NativeView {
-	class_name := if interactive { 'UI2PointerView' } else { 'UI2FlippedView' }
+	class_name := if interactive {
+		'UI2PointerView'
+	} else if macos.get_class('UI2PointerChildView') == unsafe { nil } {
+		'UI2FlippedView'
+	} else {
+		'UI2PointerChildView'
+	}
 	native := macos.msg_id_rect(macos.alloc(class_name), 'initWithFrame:', appkit_rect(frame))
 	native_set_box_background(native, box)
 	native_set_corner_radius(native, box.radius)
 	return native
 }
 
-fn native_new_scroll(frame NativeRect, box BoxStyle, persistent_scrollbars bool) NativeView {
-	scroll_view := macos.msg_id_rect(macos.alloc('NSScrollView'), 'initWithFrame:', appkit_rect(frame))
-	macos.msg_void_bool(scroll_view, 'setHasVerticalScroller:', true)
+fn native_new_scroll(frame NativeRect, box BoxStyle, persistent_scrollbars bool, mode ScrollMode) NativeView {
+	scroll_view := macos.msg_id_rect(macos.alloc('UI2ScrollView'), 'initWithFrame:', appkit_rect(frame))
+	native_set_scroll_axes(scroll_view, mode)
 	native_set_scrollbar_mode(scroll_view, persistent_scrollbars)
 	native_set_scroll_background(scroll_view, box)
 	return scroll_view
+}
+
+// native_set_scroll_axes gives a scroll view a scroller for each axis its mode scrolls.
+fn native_set_scroll_axes(scroll NativeView, mode ScrollMode) {
+	macos.msg_void_bool(scroll, 'setHasVerticalScroller:', mode != .horizontal_only)
+	macos.msg_void_bool(scroll, 'setHasHorizontalScroller:', mode != .vertical_only)
 }
 
 fn native_set_scrollbar_mode(scroll NativeView, persistent bool) {
@@ -1869,7 +2039,12 @@ fn native_new_label(frame NativeRect, text string, text_hex u32, size f64, bold 
 	} else {
 		frame
 	}
-	field := macos.msg_id_rect(macos.alloc('NSTextField'), 'initWithFrame:', appkit_rect(inner))
+	label_class := if macos.get_class('UI2PointerLabel') == unsafe { nil } {
+		'NSTextField'
+	} else {
+		'UI2PointerLabel'
+	}
+	field := macos.msg_id_rect(macos.alloc(label_class), 'initWithFrame:', appkit_rect(inner))
 	if !boxed {
 		native_update_label(field, frame, text, text_hex, size, bold, italic, underline,
 			align, lines, valign, boxed)
@@ -2136,10 +2311,10 @@ fn native_text_shortened(native NativeView, el Element) bool {
 }
 
 fn native_new_button(frame NativeRect, title string, box BoxStyle, text_hex u32, size f64, bold bool, italic bool, underline bool, lines int, image_name string, native_style bool) NativeView {
-	button_view := macos.msg_id_rect(macos.alloc('NSButton'), 'initWithFrame:', appkit_rect(frame))
-	native_update_button(button_view, frame, title, box, text_hex, size, bold, italic, underline,
+	native_button := macos.msg_id_rect(macos.alloc('NSButton'), 'initWithFrame:', appkit_rect(frame))
+	native_update_button(native_button, frame, title, box, text_hex, size, bold, italic, underline,
 		lines, image_name, native_style)
-	return button_view
+	return native_button
 }
 
 fn native_update_button(button_view NativeView, frame NativeRect, title string, box BoxStyle, text_hex u32, size f64, bold bool, italic bool, underline bool, lines int, image_name string, native_style bool) {
@@ -2622,11 +2797,19 @@ fn ui2_app_did_finish_launching(_self voidptr, _cmd voidptr, _notification voidp
 }
 
 fn fire_pointer_event(native NativeView, phase string, event voidptr) {
-	st := state()
-	// A non-interactive child (e.g. an icon image) sits on top of its pointer
+	mut st := state()
+	pressed := st.pointer_button_down
+	button_moved := st.pointer_button_moved
+	pressed_id := st.pointer_button_id
+	if phase == 'up' {
+		st.pointer_button_down = 0
+		st.pointer_button_moved = false
+		st.pointer_button_id = ''
+	}
+	// A non-interactive child (e.g. a label or icon image) sits on top of its pointer
 	// view and receives the click first. Walk up the view hierarchy to the
 	// nearest registered pointer target so the enclosing button still fires.
-	mut target := native
+	mut target := NativeView(usize(native))
 	mut id := st.pointer_ids[u64(voidptr(target))] or { '' }
 	for id.len == 0 {
 		target = NativeView(macos.msg_id(target, 'superview'))
@@ -2635,14 +2818,50 @@ fn fire_pointer_event(native NativeView, phase string, event voidptr) {
 		}
 		id = st.pointer_ids[u64(voidptr(target))] or { '' }
 	}
-	if phase == 'drag' && !(st.pointer_draggable[u64(voidptr(target))] or { false }) {
+	target_key := u64(voidptr(target))
+	button_behavior := st.pointer_buttons[target_key] or { false }
+	if phase == 'down' {
+		st.pointer_button_down = if button_behavior { target_key } else { 0 }
+		st.pointer_button_moved = false
+		st.pointer_button_id = if button_behavior { id } else { '' }
+		if button_behavior {
+			start := native_event_point(st.root_view, event)
+			st.pointer_button_x = start.x
+			st.pointer_button_y = start.y
+		}
+	}
+	if phase == 'drag' && button_behavior && pressed == target_key {
+		current := native_event_point(st.root_view, event)
+		dx := current.x - st.pointer_button_x
+		dy := current.y - st.pointer_button_y
+		if dx * dx + dy * dy > 100 {
+			st.pointer_button_moved = true
+		}
+	}
+	if phase == 'drag' && !(st.pointer_draggable[target_key] or { false }) {
 		return
 	}
 	if voidptr(st.event_handler) == unsafe { nil } {
 		return
 	}
-	point := native_event_point(st.root_view, event)
-	st.event_handler('pointer:${phase}:${id}:${point.x}:${point.y}')
+	mut should_activate := false
+	if phase == 'up' && button_behavior && pressed == target_key && !button_moved {
+		point := native_event_point(target, event)
+		target_bounds := macos.msg_rect(target, 'bounds')
+		should_activate = point.x >= target_bounds.x
+			&& point.x <= target_bounds.x + target_bounds.width && point.y >= target_bounds.y
+			&& point.y <= target_bounds.y + target_bounds.height
+	}
+	handler := st.event_handler
+	emit_pointer := (st.pointer_clickable[target_key] or { false })
+		|| (st.pointer_draggable[target_key] or { false })
+	if emit_pointer {
+		point := native_event_point(st.root_view, event)
+		handler('pointer:${phase}:${id}:${point.x}:${point.y}')
+	}
+	if should_activate && pressed_id.len > 0 {
+		handler(pressed_id)
+	}
 }
 
 @[export: 'ui2_pointer_mouse_down']
@@ -2658,6 +2877,18 @@ fn ui2_pointer_mouse_dragged(self voidptr, _cmd voidptr, event voidptr) {
 @[export: 'ui2_pointer_mouse_up']
 fn ui2_pointer_mouse_up(self voidptr, _cmd voidptr, event voidptr) {
 	fire_pointer_event(NativeView(self), 'up', event)
+}
+
+@[export: 'ui2_pointer_accessibility_press']
+fn ui2_pointer_accessibility_press(self voidptr, _cmd voidptr) bool {
+	st := state()
+	pointer := u64(self)
+	if !(st.pointer_buttons[pointer] or { false }) || voidptr(st.event_handler) == unsafe { nil } {
+		return false
+	}
+	id := st.pointer_ids[pointer] or { return false }
+	st.event_handler(id)
+	return true
 }
 
 @[export: 'ui2_pointer_reset_cursor_rects']
@@ -2833,6 +3064,170 @@ fn ui2_bounds_changed(_self voidptr, _cmd voidptr, notification voidptr) {
 	clip := macos.msg_id(macos.Id(notification), 'object')
 	id := st.scroll_ids[u64(voidptr(clip))] or { return }
 	st.scroll_handler(id)
+}
+
+const ns_event_phase_began = u64(1)
+const ns_view_width_sizable = u64(2)
+const ns_view_height_sizable = u64(16)
+
+// A scroll view takes every wheel event it is under, including one it has no way to
+// follow: along an axis it does not scroll, or further in a direction it is already at
+// the end of. That leaves a strip of columns stuck whenever the pointer is over a
+// column that scrolls the other way, and a list stalled wherever a list inside it has
+// run out. The view a gesture starts on therefore decides once, from the direction the
+// gesture sets off in, whether an enclosing Scroll element is the one to move, and
+// hands it the whole gesture if so.
+@[export: 'ui2_scroll_view_scroll_wheel']
+fn ui2_scroll_view_scroll_wheel(self voidptr, _cmd voidptr, event voidptr) {
+	mut st := state()
+	scroll_view := NativeView(self)
+	wheel := macos.Id(event)
+	handle := u64(self)
+	// A wheel click stands alone and is decided each time. A trackpad gesture is decided
+	// where it begins and keeps that answer through the momentum that follows it, even
+	// once this view has run out partway: scrolling stays with the view it began on, as
+	// it does elsewhere on macOS. AppKit follows a gesture from its beginning to its end,
+	// so handing the rest of one over would give the view around this one a gesture with
+	// no beginning and leave this one without the end that settles its rubber band.
+	phase := macos.msg_u64(wheel, 'phase')
+	click := phase == 0 && macos.msg_u64(wheel, 'momentumPhase') == 0
+	if phase == ns_event_phase_began || click {
+		dx := macos.msg_f64(wheel, 'scrollingDeltaX')
+		dy := macos.msg_f64(wheel, 'scrollingDeltaY')
+		sideways := dx * dx > dy * dy
+		st.scroll_forwarding[handle] = dx * dx != dy * dy
+			&& scroll_view_passes_gesture(scroll_view, sideways, if sideways { dx } else { dy })
+	}
+	if st.scroll_forwarding[handle] or { false } {
+		next := macos.msg_id(scroll_view, 'nextResponder')
+		if !native_is_nil(next) {
+			macos.msg_void1(next, 'scrollWheel:', wheel)
+		}
+		return
+	}
+	if click {
+		scroll_view_pass_on_unused(scroll_view, wheel)
+	}
+	C.ui2_macos_msg_super_void_id(self, voidptr(macos.get_class('NSScrollView')), voidptr(macos.sel('scrollWheel:')),
+		event)
+}
+
+// scroll_view_scrolls_axis reports whether a scroll view has anywhere to go along an
+// axis: its mode scrolls that axis, and its document is longer than what shows of it.
+fn scroll_view_scrolls_axis(scroll NativeView, horizontal bool) bool {
+	if !scroll_view_has_axis(scroll, horizontal) {
+		return false
+	}
+	document_view := macos.msg_id(scroll, 'documentView')
+	if native_is_nil(document_view) {
+		return false
+	}
+	document := macos.msg_rect(document_view, 'frame')
+	visible := macos.msg_rect(macos.msg_id(scroll, 'contentView'), 'bounds')
+	return if horizontal {
+		document.width > visible.width + 0.5
+	} else {
+		document.height > visible.height + 0.5
+	}
+}
+
+// scroll_view_room is how much of a distance along an axis a scroll view has room for:
+// all of it, what is left before the end it heads for, or none. The distance is a
+// change in offset, positive towards the end of the content. Documents are flipped
+// views, so the vertical offset grows downwards the way the horizontal one grows to
+// the right.
+fn scroll_view_room(scroll NativeView, horizontal bool, distance f64) f64 {
+	if !scroll_view_scrolls_axis(scroll, horizontal) {
+		return 0
+	}
+	document := macos.msg_rect(macos.msg_id(scroll, 'documentView'), 'frame')
+	visible := macos.msg_rect(macos.msg_id(scroll, 'contentView'), 'bounds')
+	offset := if horizontal { visible.x } else { visible.y }
+	maximum := if horizontal {
+		document.width - visible.width
+	} else {
+		document.height - visible.height
+	}
+	room := if distance > 0 { maximum - offset } else { offset }
+	if room <= 0.5 {
+		return 0
+	}
+	if distance > 0 {
+		return if distance < room { distance } else { room }
+	}
+	return if -distance < room { distance } else { -room }
+}
+
+// scroll_view_can_move reports whether a scroll view can follow a wheel delta along an
+// axis: it has a range there, and is not already at the end the delta pushes towards.
+// A positive delta carries the content with it, back towards its start.
+fn scroll_view_can_move(scroll NativeView, horizontal bool, delta f64) bool {
+	return scroll_view_room(scroll, horizontal, -delta) != 0
+}
+
+fn scroll_view_enclosing(scroll NativeView) NativeView {
+	return macos.msg_id(macos.msg_id(scroll, 'superview'), 'enclosingScrollView')
+}
+
+// scroll_view_passes_gesture reports whether a gesture starting on a scroll view
+// belongs to a scroll view around it: this one cannot follow it and one of those can.
+// Content that fits counts as unable to follow, the same as an axis the mode leaves
+// out, and so does a view already at the end the gesture heads for, so a pane does
+// not hold on to a gesture the pane around it could use. With no one to take it the
+// gesture stays where it began.
+fn scroll_view_passes_gesture(scroll NativeView, horizontal bool, delta f64) bool {
+	if scroll_view_can_move(scroll, horizontal, delta) {
+		return false
+	}
+	mut parent := scroll_view_enclosing(scroll)
+	for !native_is_nil(parent) {
+		if scroll_view_can_move(parent, horizontal, delta) {
+			return true
+		}
+		parent = scroll_view_enclosing(parent)
+	}
+	return false
+}
+
+// scroll_view_pass_on_unused gives the views around a scroll view the part of a wheel
+// click that it has no room for. AppKit moves the view itself once the click is handed
+// to it, as far as its end, and the rest of the step would be dropped there. How far a
+// click goes is the distance the device reports, or that many of the view's own lines
+// when it reports lines. Each view around it that can still move takes what it has
+// room for in turn, the way the custom renderer walks its scroll chain.
+fn scroll_view_pass_on_unused(scroll NativeView, wheel macos.Id) {
+	precise := macos.msg_bool(wheel, 'hasPreciseScrollingDeltas')
+	for horizontal in [true, false] {
+		delta := macos.msg_f64(wheel, if horizontal { 'scrollingDeltaX' } else { 'scrollingDeltaY' })
+		if delta == 0 {
+			continue
+		}
+		line := if precise {
+			1.0
+		} else {
+			macos.msg_f64(scroll, if horizontal { 'horizontalLineScroll' } else { 'verticalLineScroll' })
+		}
+		// A positive delta carries the content with it, back towards its start.
+		mut remaining := -delta * line
+		remaining -= scroll_view_room(scroll, horizontal, remaining)
+		mut parent := scroll_view_enclosing(scroll)
+		for remaining != 0 && !native_is_nil(parent) {
+			taken := scroll_view_room(parent, horizontal, remaining)
+			if taken != 0 {
+				scroll_view_move(parent, horizontal, taken)
+				remaining -= taken
+			}
+			parent = scroll_view_enclosing(parent)
+		}
+	}
+}
+
+// scroll_view_move shifts a scroll view along an axis by a distance it has room for.
+fn scroll_view_move(scroll NativeView, horizontal bool, distance f64) {
+	visible := macos.msg_rect(macos.msg_id(scroll, 'contentView'), 'bounds')
+	macos.msg_void_rect(macos.msg_id(scroll, 'documentView'), 'scrollRectToVisible:', macos.rect(visible.x +
+		if horizontal { distance } else { 0.0 }, visible.y + if horizontal { 0.0 } else { distance },
+		visible.width, visible.height))
 }
 
 @[export: 'ui2_window_did_resize']

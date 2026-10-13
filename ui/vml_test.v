@@ -367,6 +367,69 @@ fn test_vml_applies_pointer_and_transform_properties() {
 	assert el.cursor == cursor_rotate
 }
 
+fn test_vml_rectangle_can_wrap_children_with_button_behavior() {
+	el := element_from_vml('Rectangle {
+		id: save_card
+		on_tap: persist_changes
+		button_behavior: true
+		x: 20
+		y: 30
+		width: 180
+		height: 56
+		background: #2563EB
+		corner_radius: 8
+
+		Label {
+			id: save_card_title
+			text: "Save changes"
+			x: 16
+			y: 16
+			width: 148
+			height: 24
+			color: #FFFFFF
+		}
+	}', rect(0, 0, 320, 200)) or { panic(err) }
+
+	assert el.kind == .view
+	assert el.id == 'save_card'
+	assert el.action_id == 'persist_changes'
+	assert el.button_behavior
+	assert !el.clickable
+	assert el.accessibility_role == 'button'
+	assert el.accessibility_label == 'Save changes'
+	assert el.frame == rect(20, 30, 180, 56)
+	assert el.children.len == 1
+	assert el.children[0].kind == .label
+	assert el.children[0].id == 'save_card_title'
+	assert el.children[0].text == 'Save changes'
+	assert el.children[0].frame == rect(16, 16, 148, 24)
+}
+
+fn test_vml_button_behavior_preserves_an_explicit_accessibility_role() {
+	el := element_from_vml('View {
+		id: documentation
+		on_tap: open_documentation
+		button_behavior: true
+		accessibility_role: link
+		accessibility_label: "Open documentation"
+	}', rect(0, 0, 120, 40)) or { panic(err) }
+
+	assert el.button_behavior
+	assert el.accessibility_role == 'link'
+	assert el.accessibility_label == 'Open documentation'
+}
+
+fn test_vml_button_behavior_is_ignored_on_native_controls() {
+	el := element_from_vml('Button {
+		id: save
+		text: "Save"
+		button_behavior: true
+	}', rect(0, 0, 120, 40)) or { panic(err) }
+
+	assert el.kind == .button
+	assert !el.button_behavior
+}
+
 fn test_vml_applies_extended_text_style_properties() {
 	node := parse_vml('Label {
 		text: "Styled"
@@ -432,6 +495,23 @@ fn test_parse_submit_only_text_field() {
 	assert el.id == 'search'
 	assert el.submit_id == 'run_search'
 	assert !el.emit_change
+}
+
+fn test_vml_scroll_mode_selects_the_scrolled_axes() {
+	assert element_from_vml('Scroll { id: list }', rect(0, 0, 300, 200))!.scroll_mode == .vertical_only
+	columns := element_from_vml('Scroll {
+		id: columns
+		scroll_mode: horizontal_only
+		persistent: true
+	}', rect(0, 0, 300, 200))!
+	assert columns.scroll_mode == .horizontal_only
+	assert columns.persistent_scrollbars
+	assert element_from_vml('Scroll { scroll_mode: both }', rect(0, 0, 300, 200))!.scroll_mode == .both
+	element_from_vml('Scroll { scroll_mode: diagonal }', rect(0, 0, 300, 200)) or {
+		assert err.msg().contains('unknown scroll mode `diagonal`')
+		return
+	}
+	assert false
 }
 
 fn test_vml_dropdown_options_persistent_scroll_and_tooltip() {
