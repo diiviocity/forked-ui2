@@ -2244,7 +2244,7 @@ fn page_focused_text_area(direction int) {
 				if el.native_style && el.box.bg == unstyled_box_bg {
 					draw_button_bezel(ctx, x, y, el.frame.width, el.frame.height, el.box.radius,
 						el.enabled)
-				} else {
+				} else if box_draws_fill(el.box) {
 					draw_rect(ctx, x, y, el.frame.width, el.frame.height, el.box.bg, el.box.radius)
 				}
 				draw_box_borders(ctx, x, y, el.frame.width, el.frame.height, el.box)
@@ -2298,7 +2298,7 @@ fn page_focused_text_area(direction int) {
 				if el.native_style && box.bg == unstyled_box_bg {
 					draw_button_bezel(ctx, x, y, el.frame.width, el.frame.height, box.radius,
 						el.enabled)
-				} else {
+				} else if box_draws_fill(box) {
 					draw_rect(ctx, x, y, el.frame.width, el.frame.height, box.bg, box.radius)
 				}
 				draw_box_borders(ctx, x, y, el.frame.width, el.frame.height, box)
@@ -3381,11 +3381,38 @@ fn page_focused_text_area(direction int) {
 				shortened = true
 			}
 			ctx.draw_text(int(text_x), int(line_y), line, cfg)
+			if style.underline || style.strikethrough {
+				draw_text_decorations(ctx, line, f64(text_x), line_y, cfg, style)
+			}
 		}
 		if bounded {
 			apply_clip(ctx, clip)
 		}
 		return shortened
+	}
+
+	// draw_text_decorations rules a line drawn at text_x (its anchor for the
+	// line's alignment) and centred on line_y. Every backend's text style carries
+	// underline and strikethrough, so a custom-rendered link is underlined too.
+	fn draw_text_decorations(ctx &gg.Context, line string, text_x f64, line_y f64, cfg gg.TextCfg, style TextStyle) {
+		ctx.set_text_cfg(cfg)
+		width := f64(ctx.text_width_f(line))
+		if width <= 0 {
+			return
+		}
+		left := match style.align {
+			.left { text_x }
+			.center { text_x - width / 2 }
+			.right { text_x - width }
+		}
+		size := f64(cfg.size)
+		thickness := math.max(1.0, math.round(size / 14))
+		if style.underline {
+			draw_rect(ctx, left, line_y + size * 0.42, width, thickness, style.color, 0)
+		}
+		if style.strikethrough {
+			draw_rect(ctx, left, line_y - thickness / 2, width, thickness, style.color, 0)
+		}
 	}
 
 	fn draw_text_centered(ctx &gg.Context, t string, x f64, y f64, w f64, h f64, style TextStyle) bool {

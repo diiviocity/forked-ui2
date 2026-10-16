@@ -244,17 +244,32 @@ fn objc_place_subview(parent macos.Id, child macos.Id, previous macos.Id) {
 	macos.msg_void_id_i64_id(parent, 'addSubview:positioned:relativeTo:', child, position, previous)
 }
 
+// native_accessibility_role maps ui2's (ARIA-style) role names onto AppKit roles,
+// following how WebKit exposes the same ARIA roles. A nil result leaves the view's
+// own role alone: that is right for `presentation`, for roles ui2 puts on native
+// buttons that must stay pressable (`listitem`, `treeitem`), and for names AppKit
+// has no role for, which it would otherwise be handed verbatim.
 fn native_accessibility_role(role string) macos.Id {
 	return match role {
-		'' { objc_nil() }
+		'', 'presentation', 'listitem', 'treeitem' { objc_nil() }
 		'button' { macos.nsstring('AXButton') }
 		'text', 'label' { macos.nsstring('AXStaticText') }
-		'text_field' { macos.nsstring('AXTextField') }
-		'image' { macos.nsstring('AXImage') }
+		'text_field', 'textbox' { macos.nsstring('AXTextField') }
+		'image', 'img' { macos.nsstring('AXImage') }
+		// Structural roles have no AppKit counterpart of their own; VoiceOver reads
+		// them as groups. A tree is one too: an outline needs rows AppKit can walk.
+		'group', 'navigation', 'status', 'alert', 'dialog', 'tree' { macos.nsstring('AXGroup') }
+		'separator' { macos.nsstring('AXSplitter') }
 		'link' { macos.nsstring('AXLink') }
 		'slider' { macos.nsstring('AXSlider') }
-		'switch' { macos.nsstring('AXCheckBox') }
-		else { macos.nsstring(role) }
+		'switch', 'checkbox' { macos.nsstring('AXCheckBox') }
+		'progressbar' { macos.nsstring('AXProgressIndicator') }
+		// ui2's combobox is a select-only dropdown, which WebKit exposes as a pop-up.
+		'combobox' { macos.nsstring('AXPopUpButton') }
+		// A tab is a pressable choice among its siblings.
+		'tab' { macos.nsstring('AXRadioButton') }
+		'list' { macos.nsstring('AXList') }
+		else { if role.starts_with('AX') { macos.nsstring(role) } else { objc_nil() } }
 	}
 }
 

@@ -72,6 +72,9 @@ jobs:
           sudo apt-get install --quiet -y --no-install-recommends \
             libx11-dev libxcursor-dev libxi-dev libgl1-mesa-dev libasound2-dev
 
+      - name: Test component catalog and primitives
+        run: v ${{ matrix.custom && '-d ui2_custom_rendering' || '' }} test ui2/ui/component_catalog_test.v
+
       - name: Test VML menu declarations
         run: v ${{ matrix.custom && '-d ui2_custom_rendering' || '' }} test ui2/ui/vml_menu_test.v
 

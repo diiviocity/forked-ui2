@@ -403,11 +403,11 @@ fn (mut p Parser) eat(kind TokenKind) !Token {
 }
 
 fn (mut p Parser) parse_node() !&VNode {
-	tag := p.eat(.ident)!
+	tag_tok := p.eat(.ident)!
 	p.eat(.lbrace)!
 	mut node := &VNode{
-		tag:  tag.val
-		line: tag.line
+		tag:  tag_tok.val
+		line: tag_tok.line
 	}
 	for p.at().kind != .rbrace && p.at().kind != .eof {
 		// Lookahead: if IDENT followed by '{', it's a child node; if followed by ':', it's a property

@@ -1302,6 +1302,13 @@ fn windows_update_tooltip(key string, hwnd voidptr, text_hwnd voidptr, tooltip s
 	}
 }
 
+// GDI has no face called `monospace` and would substitute a proportional one,
+// so the generic names resolve to Consolas, as the custom renderer resolves them
+// to an installed monospace face.
+fn windows_font_family(family string) string {
+	return if font_key(family) in ['monospace', 'mono', 'uimonospace'] { 'Consolas' } else { family }
+}
+
 // windows_font_text returns every string the control draws with its own font,
 // so a fallback family is picked for placeholders and dropdown items too.
 fn windows_font_text(el Element) string {
@@ -1349,7 +1356,7 @@ fn windows_update_style(key string, hwnd voidptr, el Element) {
 		font_text := windows_font_text(el)
 		font_sig := '${el.text_style.size}:${el.text_style.font_family.bytes().hex()}:${windows_bool(el.text_style.bold)}:${windows_bool(el.text_style.italic)}:${windows_bool(el.text_style.underline)}:${windows_bool(el.text_style.strikethrough)}:${windows_font_glyph_key(font_text)}'
 		if (st.font_sigs[key] or { '' }) != font_sig {
-			wide_family := el.text_style.font_family.to_wide()
+			wide_family := windows_font_family(el.text_style.font_family).to_wide()
 			wide_text := font_text.to_wide()
 			font := C.ui2_win_create_font(hwnd, el.text_style.size, wide_family, windows_bool(el.text_style.bold), windows_bool(el.text_style.italic), windows_bool(el.text_style.underline), windows_bool(el.text_style.strikethrough), wide_text)
 			unsafe { free(wide_family) }

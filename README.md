@@ -510,7 +510,10 @@ its text area is plain-text, so those two controls report `partial` support.
 
 Shared state includes `hidden`, `enabled`, `accessibility_role`,
 `accessibility_label`, and `accessibility_value`. Native backends expose these
-through AppKit/UIKit. Standard Windows controls expose their native name and
+through AppKit/UIKit. Roles use ARIA names (`button`, `checkbox`, `tab`,
+`progressbar`, `navigation`, …); AppKit maps them onto its own roles, passes
+`AX…` roles through unchanged, and leaves a view's native role in place for a
+name it has no role for. Standard Windows controls expose their native name and
 value; `button_behavior` views also expose a native button role, generated
 label, keyboard focus, and accessibility activation. Other explicit Windows
 accessibility role/value overrides are not yet implemented.

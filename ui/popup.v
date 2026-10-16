@@ -60,7 +60,7 @@ fn popup_id(id string, suffix string) string {
 pub fn popup(config PopupConfig) !Element {
 	geometry := popup_geometry(config)!
 	title := label(popup_id(config.id, 'title'), config.title, geometry.title, config.title_style)
-	separator := view(popup_id(config.id, 'separator'), geometry.separator, config.separator_box, [])
+	separator_el := view(popup_id(config.id, 'separator'), geometry.separator, config.separator_box, [])
 	content_source := if config.content.kind == .screen && config.content.id.len == 0
 		&& config.content.children.len == 0 {
 		view('', rect(0, 0, 0, 0), BoxStyle{ transparent: true }, [])
@@ -73,7 +73,7 @@ pub fn popup(config PopupConfig) !Element {
 	}
 	surface_content := view(popup_id(config.id, 'content'), rect(0, 0, geometry.surface.width, geometry.surface.height), BoxStyle{ transparent: true }, [
 		title,
-		separator,
+		separator_el,
 		content,
 	])
 	return modal_view(

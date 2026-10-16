@@ -161,8 +161,8 @@ fn parse_font_metrics(data []u8) !FontMetrics {
 	// A collection keeps its own header up front and the first font's table
 	// directory further in.
 	base := if font_tag(data, 0) == 'ttcf' { font_u32(data, 12) } else { 0 }
-	tag := font_tag(data, base)
-	if tag != 'OTTO' && tag != 'true' && font_u32(data, base) != 0x00010000 {
+	font_kind := font_tag(data, base)
+	if font_kind != 'OTTO' && font_kind != 'true' && font_u32(data, base) != 0x00010000 {
 		return error('not a TrueType or OpenType font')
 	}
 	num_tables := font_u16(data, base + 4)
