@@ -2246,11 +2246,12 @@ fn native_update_label(view NativeView, frame NativeRect, text string, text_hex 
 	}
 	macos.msg_void_i64(label_view, 'setAlignment:', native_text_alignment(align))
 	native_apply_line_limit(label_view, lines)
-	// Only NSTextField carries a line budget; an NSButton has none to set.
-	macos.msg_void_i64(label_view, 'setMaximumNumberOfLines:', i64(if lines > 1 {
+	// Only NSTextField carries a line budget; an NSButton has none to set. Zero
+	// is no limit, for both NSTextField and ui2.
+	macos.msg_void_i64(label_view, 'setMaximumNumberOfLines:', i64(if lines > 0 {
 		lines
 	} else {
-		1
+		0
 	}))
 	native_place_label_text(label_view, frame, lines, valign, boxed)
 }
@@ -2316,7 +2317,7 @@ fn native_apply_label_valign(label_view NativeView, frame NativeRect, lines int,
 // is measured once per font and a grid of labels pays no layout pass for it. Other
 // text may draw with a taller fallback face and is measured each time.
 fn native_label_content_height(label_view NativeView, frame NativeRect, lines int) f64 {
-	if lines > 1 {
+	if lines != 1 {
 		macos.msg_void_f64(label_view, 'setPreferredMaxLayoutWidth:', frame.width)
 		// Point carries a Cocoa size as well as a point; y is the height.
 		return macos.msg_point(label_view, 'intrinsicContentSize').y
@@ -2357,8 +2358,11 @@ const ns_line_break_by_truncating_tail = 4
 // means anything if the text may flow onto them, so the break mode has to change with
 // it: left at truncate-tail, a multi-line label still laid its text out on one line
 // and clipped the rest, and asking for more lines did nothing.
+// A budget of 0 (or less) wraps as many lines as the frame shows. The build pass
+// normally turns it into a large budget first, but an element styled after that
+// pass must not collapse onto one line.
 fn native_apply_line_limit(view NativeView, lines int) {
-	single := lines <= 1
+	single := lines == 1
 	cell := macos.msg_id(view, 'cell')
 	macos.msg_void_i64(cell, 'setLineBreakMode:', if single {
 		ns_line_break_by_truncating_tail
@@ -2430,7 +2434,7 @@ fn native_hover_text(key string, native NativeView, el Element) string {
 fn shortenable_text(el Element) string {
 	return match el.kind {
 		.label, .button, .toggle_button, .checkbox {
-			if el.text_style.lines > 1 { '' } else { el.text }
+			if el.text_style.lines != 1 { '' } else { el.text }
 		}
 		.dropdown {
 			el.text
@@ -2527,6 +2531,7 @@ fn native_update_checkbox(checkbox_view NativeView, el Element) {
 	macos.msg_void_i64(checkbox_view, 'setState:', if el.checked { i64(1) } else { i64(0) })
 	macos.msg_void_bool(checkbox_view, 'setAllowsMixedState:', false)
 	macos.msg_void1(checkbox_view, 'setFont:', native_font(el.text_style.size, el.text_style.bold, el.text_style.italic))
+	native_checkbox_set_title(checkbox_view, el.text, el.text_style)
 	native_match_appearance(checkbox_view, el.box, el.text_style.color)
 }
 

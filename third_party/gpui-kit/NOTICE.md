@@ -31,6 +31,12 @@ Each carries an SPDX header naming it.
 | `ui/component_lists.v` | The row model and wrapping keyboard navigation of `crates/component/src/list/cache.rs` and `list.rs`. |
 | `ui/component_lists_search.v` | The matching, group and highlight rules of `crates/component/src/searchable_list/`. |
 | `ui/component_pickers_command.v` | The filtering and navigation rules of `crates/component/src/command/state.rs`. |
+| `ui/component_panels.v` | The resize handle's indicator levels and grab padding of `crates/component/src/resizable.rs`, and the fixed-panel container-resize rule of `crates/base/src/resizable/mod.rs`. |
+| `ui/component_panels_dock_view.v` | The dock chrome rules of `crates/component/src/dock/tab_panel.rs`: toggle placement, the collapsed bottom strip, single-panel title bars, zoom, and no close on a dock's last panel. |
+| `ui/component_panels_test.v` | Fixed-panel sizing cases from `crates/base/src/resizable/mod.rs`, beside new tests. |
+| `ui/component_form_test.v` | Label-orientation and hidden-field cases from `crates/component/src/form/tests.rs`, beside new tests. |
+| `ui/component_settings.v` | The search selection (`SettingsFilter::selected_index`), search matching (`SettingItem::is_match`) and Reset-all scope (`SettingGroup::reset`) of `crates/component/src/setting/`. |
+| `ui/component_settings_test.v` | Search-selection, footer and search-reset scenarios from `crates/component/src/setting/tests.rs`, beside new tests. |
 
 Every other component implementation is new V code following the GPUI Kit
 catalog's documented concepts, not copied Rust. It, the examples and the

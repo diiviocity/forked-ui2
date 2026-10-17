@@ -280,6 +280,10 @@ fn native_accessibility_role(role string) macos.Id {
 		'menu' { macos.nsstring('AXMenu') }
 		'menuitem', 'menuitemcheckbox', 'menuitemradio' { macos.nsstring('AXMenuItem') }
 		'list', 'listbox' { macos.nsstring('AXList') }
+		'toolbar' { macos.nsstring('AXToolbar') }
+		'tablist' { macos.nsstring('AXTabGroup') }
+		// WebKit's role for headings, which VoiceOver's rotor jumps between.
+		'heading' { macos.nsstring('AXHeading') }
 		else { if role.starts_with('AX') { macos.nsstring(role) } else { objc_nil() } }
 	}
 }

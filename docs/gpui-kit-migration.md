@@ -155,12 +155,12 @@ exists; **Planned** — scheduled for the named batch. Per-group details live in
 | description-list | `description_list` | Done (batch 1) |  |
 | dialog | `modal_dialog`, `modal_view`, `popup` | Done (batch 3) | [dialogs](gpui-kit/dialogs.md) |
 | diff | — | Planned (batch 8) |  |
-| dock | — | Planned (batch 6) |  |
+| dock | `dock_area`, `DockLayout` | Done (batch 6) | Tabbed docks, resizing, zoom, saved layouts; [panels](gpui-kit/panels.md) |
 | dropdown_button | `dropdown_button` | Done (batch 3) | [popovers](gpui-kit/popovers.md) |
 | editor | `text_editor`, `text_area` | Partial | Code-editor features in batch 8 |
 | empty | `empty_state` | Done (batch 1) |  |
 | focus-trap | `focus_trap_next`, `FocusTrap` | Done (batch 3) | [dialogs](gpui-kit/dialogs.md) |
-| form | — | Planned (batch 6) |  |
+| form | `form`, `form_field` | Done (batch 6) | Grid layout, sections, validation; [form](gpui-kit/form.md) |
 | group-box | `group_box` | Done (batch 1) |  |
 | hover-card | `hover_card`, `HoverCardState` | Done (batch 3) | [popovers](gpui-kit/popovers.md) |
 | icon | `named_icon`, `IconName`, `symbol:` images | Done (batch 2) | [feedback](gpui-kit/feedback.md) |
@@ -185,19 +185,19 @@ exists; **Planned** — scheduled for the named batch. Per-group details live in
 | questionnaire | — | Planned (batch 7) |  |
 | radio | `radio`, `radio_group` | Done (batch 2) | [choice](gpui-kit/choice.md) |
 | rating | `rating` | Done (batch 2) | [choice](gpui-kit/choice.md) |
-| resizable | — | Planned (batch 6) |  |
+| resizable | `resizable_panels`, `resize_handle` | Done (batch 6) | [panels](gpui-kit/panels.md) |
 | root | `screen` | Not applicable | GPUI window root; ui2 builds a `screen` |
 | scrollable | `scroll` | Existing |  |
 | select | `select_box`, `dropdown`, `spinner` | Done (batch 5) | Searchable and multiple select; [pickers](gpui-kit/pickers.md) |
-| settings | — | Planned (batch 6) |  |
+| settings | `settings` | Done (batch 6) | Pages, groups, search, reset; [settings](gpui-kit/settings.md) |
 | sheet | `sheet` | Done (batch 3) | [dialogs](gpui-kit/dialogs.md) |
 | shimmer | `shimmer`, `shimmer_text` | Done (batch 2) | [feedback](gpui-kit/feedback.md) |
-| sidebar | — | Planned (batch 6) |  |
+| sidebar | `sidebar`, `sidebar_toggle_button` | Done (batch 6) | Groups, nested items, icon rail; [sidebar](gpui-kit/sidebar.md) |
 | skeleton | `skeleton` | Done (batch 1) |  |
 | slider | `slider` | Existing | Feature audit pending |
 | speech | — | Planned (batch 7) | Needs platform speech recognition |
 | spinner | `loading_spinner` | Done (batch 2) | `spinner` is ui2's selection control; [feedback](gpui-kit/feedback.md) |
-| status-bar | — | Planned (batch 6) |  |
+| status-bar | `status_bar` | Done (batch 6) | [bars](gpui-kit/bars.md) |
 | stepper | `stepper` | Done (batch 2) | [choice](gpui-kit/choice.md) |
 | switch | `switch_control` | Existing |  |
 | table | `table` | Done (batch 5) | [tables](gpui-kit/tables.md) |
@@ -207,9 +207,9 @@ exists; **Planned** — scheduled for the named batch. Per-group details live in
 | textarea | `text_area` | Existing |  |
 | theme | `ComponentTheme` | Partial | Light/dark tokens; theme registry later |
 | time-field | `time_field` | Done (batch 4) | [datetime](gpui-kit/datetime.md) |
-| title-bar | — | Planned (batch 6) |  |
+| title-bar | `title_bar` | Done (batch 6) | Uses `set_window_chrome`; [bars](gpui-kit/bars.md) |
 | toggle | `toggle`, `toggle_group` | Done (batch 2) | [choice](gpui-kit/choice.md) |
-| toolbar | — | Planned (batch 6) |  |
+| toolbar | `toolbar` | Done (batch 6) | [bars](gpui-kit/bars.md) |
 | tooltip | `with_tooltip` | Existing |  |
 | tree | `tree_view` | Existing | Feature audit pending |
 | virtual-list | `virtual_list`, `virtual_list_fixed`, `virtual_list_sized` | Done (batch 5) | [lists](gpui-kit/lists.md) |

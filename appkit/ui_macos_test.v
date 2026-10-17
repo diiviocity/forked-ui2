@@ -402,6 +402,41 @@ fn test_macos_controls_take_the_appearance_their_colors_call_for() {
 	assert native_appearance_name(dark_box) == 'NSAppearanceNameDarkAqua'
 }
 
+fn test_macos_checkbox_title_takes_its_text_color() {
+	pool := macos.autorelease_pool_new()
+	defer {
+		macos.release(pool)
+	}
+	box := native_new_checkbox(checkbox('box', 'Remember me', false, rect(0, 0, 160, 24),
+		TextStyle{
+		color: 0xef4444
+	}))
+	defer {
+		macos.release(box)
+	}
+	title := macos.msg_id(box, 'attributedTitle')
+	assert macos.utf8_string(macos.msg_id(title, 'string')) == 'Remember me'
+	attrs := macos.msg_id_u64_id(title, 'attributesAtIndex:effectiveRange:', 0, macos.Id(unsafe { nil }))
+	color := macos.msg_id1(attrs, 'objectForKey:', macos.nsstring('NSColor'))
+	assert macos.msg_bool_id(color, 'isEqual:', native_color(0xef4444))
+}
+
+fn test_macos_unlimited_line_budget_wraps() {
+	pool := macos.autorelease_pool_new()
+	defer {
+		macos.release(pool)
+	}
+	field := macos.msg_id_rect(macos.alloc('NSTextField'), 'initWithFrame:', appkit_rect(native_rect(0,
+		0, 120, 60)))
+	defer {
+		macos.release(field)
+	}
+	native_apply_line_limit(field, 0)
+	assert !macos.msg_bool(macos.msg_id(field, 'cell'), 'usesSingleLineMode')
+	native_apply_line_limit(field, 1)
+	assert macos.msg_bool(macos.msg_id(field, 'cell'), 'usesSingleLineMode')
+}
+
 fn native_appearance_name(view NativeView) string {
 	return macos.utf8_string(macos.msg_id(macos.msg_id(view, 'appearance'), 'name'))
 }

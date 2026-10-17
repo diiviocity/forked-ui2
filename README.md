@@ -666,6 +666,22 @@ title bar `clickable: true` (or `draggable`) and call it on `pointer:down`.
 for native and custom-rendered windows on macOS and Windows; Linux, Android and
 iOS keep their own frame and the calls report false.
 
+The window does not exist until `run_window` starts, so hide the title bar
+from a zero-second timer set up before it; the timer runs during the first
+build, and the rebuild it asks for lays the window out at its new size:
+
+```v
+ui2.after(0, fn [mut app] () {
+	app.chrome_hidden = ui2.set_window_chrome(.hidden_titlebar)
+})
+ui2.run_window(...)
+```
+
+Pointer events carry no click count, and a press in a hidden title bar does
+not zoom the window on its own, so detect the double click yourself (the
+`title_bar` component's `title_bar_event` does) and call
+`toggle_maximize_window`.
+
 ## Timers
 
 `after` runs a callback on the UI thread once a delay has passed and then

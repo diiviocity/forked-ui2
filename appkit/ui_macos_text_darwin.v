@@ -261,13 +261,34 @@ fn native_button_set_attributed_title(button macos.Id, text string, color u32, s
 	attrs := native_text_attributes(color, 0, size, '', bold, italic, underline, false, '')
 	style := macos.msg_id(macos.alloc('NSMutableParagraphStyle'), 'init')
 	macos.msg_void_i64(style, 'setAlignment:', native_text_alignment(align_value(.center)))
-	macos.msg_void_i64(style, 'setLineBreakMode:', if lines <= 1 {
+	macos.msg_void_i64(style, 'setLineBreakMode:', if lines == 1 {
 		i64(ns_line_break_by_truncating_tail)
 	} else {
 		i64(ns_line_break_by_word_wrapping)
 	})
 	objc_dict_set(attrs, objc_attr_paragraph_style, style)
 	macos.release(style)
+	attributed := macos.msg_id2(macos.alloc('NSAttributedString'), 'initWithString:attributes:', macos.nsstring(text), attrs)
+	macos.msg_void1(button, 'setAttributedTitle:', attributed)
+	macos.release(attributed)
+}
+
+// native_checkbox_set_title draws a check box's title in its declared style: a
+// plain NSButton title is always the system's label color, whatever the theme.
+fn native_checkbox_set_title(button macos.Id, text string, style TextStyle) {
+	if objc_is_nil(button) {
+		return
+	}
+	attrs := native_text_attributes(style.color, 0, style.size, style.font_family, style.bold,
+		style.italic, style.underline, false, '')
+	paragraph := macos.msg_id(macos.alloc('NSMutableParagraphStyle'), 'init')
+	macos.msg_void_i64(paragraph, 'setLineBreakMode:', if style.lines == 1 {
+		i64(ns_line_break_by_truncating_tail)
+	} else {
+		i64(ns_line_break_by_word_wrapping)
+	})
+	objc_dict_set(attrs, objc_attr_paragraph_style, paragraph)
+	macos.release(paragraph)
 	attributed := macos.msg_id2(macos.alloc('NSAttributedString'), 'initWithString:attributes:', macos.nsstring(text), attrs)
 	macos.msg_void1(button, 'setAttributedTitle:', attributed)
 	macos.release(attributed)
