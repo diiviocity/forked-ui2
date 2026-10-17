@@ -390,7 +390,7 @@ pub:
 	long_press            bool
 	swipe_left            bool
 	readonly              bool // text_area: selectable but not editable
-	disable_scroll        bool // text_area: hide the internal scroll view scroller
+	disable_scroll        bool // text_area, scroll: hide the scrollers (a scroll still scrolls)
 	persistent_scrollbars bool // scroll: keep a legacy always-visible scroller instead of the auto-fading overlay one
 	scroll_mode           ScrollMode // scroll: the axes the content scrolls along
 	secure                bool // text_field: native password entry

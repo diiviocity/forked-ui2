@@ -35,6 +35,15 @@ fn v_string(value string) VValue {
 	}
 }
 
+// v_number_text is how a computed number reads: a whole one without a
+// fraction, so `${app.index + 1}` shows "2", not "2.0".
+fn v_number_text(value f64) string {
+	if value == math.trunc(value) && math.abs(value) < 1e15 {
+		return i64(value).str()
+	}
+	return value.str()
+}
+
 fn v_number(value f64, text string) VValue {
 	return VValue{
 		kind:   .number
@@ -526,16 +535,16 @@ fn v_eval_binary(expr &VExpression, scope map[string]VValue) !VValue {
 				v_string(left.string_value() + right.string_value())
 			} else {
 				value := left.numeric(expr.line)! + right.numeric(expr.line)!
-				v_number(value, value.str())
+				v_number(value, v_number_text(value))
 			}
 		}
 		'-' {
 			value := left.numeric(expr.line)! - right.numeric(expr.line)!
-			v_number(value, value.str())
+			v_number(value, v_number_text(value))
 		}
 		'*' {
 			value := left.numeric(expr.line)! * right.numeric(expr.line)!
-			v_number(value, value.str())
+			v_number(value, v_number_text(value))
 		}
 		'/' {
 			divisor := right.numeric(expr.line)!
@@ -543,7 +552,7 @@ fn v_eval_binary(expr &VExpression, scope map[string]VValue) !VValue {
 				return error('division by zero at line ${expr.line}')
 			}
 			value := left.numeric(expr.line)! / divisor
-			v_number(value, value.str())
+			v_number(value, v_number_text(value))
 		}
 		'%' {
 			divisor := right.numeric(expr.line)!
@@ -551,7 +560,7 @@ fn v_eval_binary(expr &VExpression, scope map[string]VValue) !VValue {
 				return error('division by zero at line ${expr.line}')
 			}
 			value := math.fmod(left.numeric(expr.line)!, divisor)
-			v_number(value, value.str())
+			v_number(value, v_number_text(value))
 		}
 		'==' {
 			v_bool(v_values_equal(left, right))

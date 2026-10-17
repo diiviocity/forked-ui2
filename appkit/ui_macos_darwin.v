@@ -1428,7 +1428,7 @@ fn native_create_element(el Element) NativeView {
 		}
 		.scroll {
 			native_new_scroll(element_rect(el.frame), el.box, el.persistent_scrollbars,
-				el.scroll_mode)
+				el.scroll_mode, el.disable_scroll)
 		}
 		.label {
 			native_new_label(element_rect(el.frame), el.text, el.text_style.color, el.text_style.size, el.text_style.font_family, el.text_style.bold, el.text_style.italic, el.text_style.underline, align_value(el.text_style.align), el.text_style.lines, el.text_style.valign, label_needs_container(el))
@@ -1474,8 +1474,9 @@ fn native_update_element(native NativeView, el Element, declared_text_changed bo
 		.scroll {
 			native_set_frame(native, element_rect(el.frame))
 			native_set_scroll_background(native, el.box)
-			native_set_scroll_axes(native, el.scroll_mode)
+			native_set_scroll_axes(native, el.scroll_mode, el.disable_scroll)
 			native_set_scrollbar_mode(native, el.persistent_scrollbars)
+			native_match_scroll_appearance(native, el.box)
 		}
 		.label {
 			native_update_label(native, element_rect(el.frame), el.text, el.text_style.color, el.text_style.size, el.text_style.font_family, el.text_style.bold, el.text_style.italic, el.text_style.underline, align_value(el.text_style.align), el.text_style.lines, el.text_style.valign, label_needs_container(el))
@@ -2215,18 +2216,31 @@ fn native_new_view(frame NativeRect, box BoxStyle, interactive bool) NativeView 
 	return native
 }
 
-fn native_new_scroll(frame NativeRect, box BoxStyle, persistent_scrollbars bool, mode ScrollMode) NativeView {
+fn native_new_scroll(frame NativeRect, box BoxStyle, persistent_scrollbars bool, mode ScrollMode, hidden bool) NativeView {
 	scroll_view := macos.msg_id_rect(macos.alloc('UI2ScrollView'), 'initWithFrame:', appkit_rect(frame))
-	native_set_scroll_axes(scroll_view, mode)
+	native_set_scroll_axes(scroll_view, mode, hidden)
 	native_set_scrollbar_mode(scroll_view, persistent_scrollbars)
 	native_set_scroll_background(scroll_view, box)
+	native_match_scroll_appearance(scroll_view, box)
 	return scroll_view
 }
 
-// native_set_scroll_axes gives a scroll view a scroller for each axis its mode scrolls.
-fn native_set_scroll_axes(scroll NativeView, mode ScrollMode) {
-	macos.msg_void_bool(scroll, 'setHasVerticalScroller:', mode != .horizontal_only)
-	macos.msg_void_bool(scroll, 'setHasHorizontalScroller:', mode != .vertical_only)
+// native_set_scroll_axes gives a scroll view a scroller for each axis its mode
+// scrolls, or none at all when the element hides them (`disable_scroll`).
+fn native_set_scroll_axes(scroll NativeView, mode ScrollMode, hidden bool) {
+	macos.msg_void_bool(scroll, 'setHasVerticalScroller:', !hidden && mode != .horizontal_only)
+	macos.msg_void_bool(scroll, 'setHasHorizontalScroller:', !hidden && mode != .vertical_only)
+}
+
+// native_match_scroll_appearance gives a scroll view's scrollers the light or
+// dark look of what they sit on: the scroll's fill, or the color a transparent
+// scroll names as its background.
+fn native_match_scroll_appearance(scroll NativeView, box BoxStyle) {
+	native_match_appearance(scroll, box, if native_color_is_light(box.bg) {
+		u32(0x000000)
+	} else {
+		u32(0xffffff)
+	})
 }
 
 fn native_set_scrollbar_mode(scroll NativeView, persistent bool) {

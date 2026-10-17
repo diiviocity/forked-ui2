@@ -674,8 +674,6 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 	// ── Frame & event loop ─────────────────────────────────────────────
 
 	fn on_init(_ &GgApp) {
-		// Text can be measured from here on; builds before this estimate.
-		configure_text_measurer(custom_measure_text_width)
 		if voidptr(g_build_screen) == unsafe { nil } {
 			return
 		}
@@ -705,6 +703,12 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 		// been created, so the fallback chain is attached on the way into the
 		// first frame rather than in run_window.
 		ensure_symbol_fallbacks(ctx)
+		if !text_measurement_exact() && ctx.font_inited {
+			// Text is measured from the first frame with fonts and their symbol
+			// fallbacks in place; measured earlier, a glyph only a fallback face
+			// has, such as ⌘, was cached as the width of an empty box.
+			configure_text_measurer(custom_measure_text_width)
+		}
 		mut root := Element{}
 		mut has_root := false
 		if voidptr(g_build_screen) != unsafe { nil } {
@@ -949,11 +953,14 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 			drag_scrollbar(x, y)
 			return
 		}
-		if g_touch.scroll_chain.len > 0 {
+		dragging := target.action_id.len > 0 && target.draggable
+		// A press on something draggable drags it; the scroll around it stays put,
+		// or reordering tabs in a strip that scrolls would also scroll the strip.
+		if g_touch.scroll_chain.len > 0 && !dragging {
 			apply_scroll_chain(g_touch.scroll_chain, previous_y - y, false)
 			apply_scroll_chain(g_touch.scroll_chain, previous_x - x, true)
 		}
-		if target.action_id.len > 0 && target.draggable {
+		if dragging {
 			fire_event(pointer_event_id('drag', target.action_id, x, y))
 		}
 	}
@@ -2304,12 +2311,12 @@ fn page_focused_text_area(direction int) {
 				}
 				if child_clip.width > 0 && child_clip.height > 0 {
 					apply_clip(ctx, child_clip)
-					if scrolls_y {
+					if scrolls_y && !el.disable_scroll {
 						// A transparent scroll still names the color it sits on.
 						draw_scrollbar(ctx, x, y, el.frame.width, el.frame.height, content_h, scroll_y,
 							el.persistent_scrollbars, el.box.bg)
 					}
-					if scrolls_x {
+					if scrolls_x && !el.disable_scroll {
 						draw_scrollbar_x(ctx, frame, content_w, scroll_x, el.persistent_scrollbars,
 							beside_vertical, el.box.bg)
 					}
@@ -2628,8 +2635,17 @@ fn page_focused_text_area(direction int) {
 				g_text_kinds[el.id] = el.kind
 				g_active_fields[el.id] = true
 				current_text := g_text_values[el.id] or { el.text }
-				draw_control_surface(ctx, x, y, el.frame.width, el.frame.height, el.box,
-					g_focused_field == el.id, el.enabled)
+				if el.box.transparent {
+					// A transparent text area sits on what is behind it, as on AppKit:
+					// only its declared borders, and the focus outline while focused.
+					draw_box_borders(ctx, x, y, el.frame.width, el.frame.height, el.box)
+					if g_focused_field == el.id {
+						draw_outline(ctx, x, y, el.frame.width, el.frame.height, 0x3478d4, el.box.radius)
+					}
+				} else {
+					draw_control_surface(ctx, x, y, el.frame.width, el.frame.height, el.box,
+						g_focused_field == el.id, el.enabled)
+				}
 				draw_text_area_content(ctx, el, current_text, x, y, clip, scroll_parent_id)
 				if el.enabled && !el.readonly {
 					add_hit_target(HitTarget{
@@ -2675,13 +2691,19 @@ fn page_focused_text_area(direction int) {
 				} else {
 					20.0
 				}
-				track_color := if el.enabled { el.slider_style.track_color } else { u32(0xe2e8f0) }
+				// A disabled slider keeps its own colors, faded halfway into its track,
+				// so it still suits a dark theme.
+				track_color := el.slider_style.track_color
 				value_color := if el.enabled {
 					el.slider_style.value_track_color
 				} else {
-					u32(0x94a3b8)
+					slider_faded_color(el.slider_style.value_track_color, track_color)
 				}
-				thumb_color := if el.enabled { el.slider_style.thumb_color } else { u32(0x94a3b8) }
+				thumb_color := if el.enabled {
+					el.slider_style.thumb_color
+				} else {
+					slider_faded_color(el.slider_style.thumb_color, track_color)
+				}
 				if el.orientation == .vertical {
 					inset := slider_track_padding(el.padding, frame.height)
 					extent := frame.height - inset * 2
@@ -3452,6 +3474,7 @@ fn page_focused_text_area(direction int) {
 		if g_font_symbol_fons != voidptr(fons) {
 			g_font_symbol_fons = voidptr(fons)
 			g_text_area_layouts = map[string]TextAreaLayout{}
+			g_text_widths.clear()
 			g_font_symbol_ids = []int{}
 			g_font_symbol_bases = map[int]bool{}
 			for path in font_symbol_paths() {

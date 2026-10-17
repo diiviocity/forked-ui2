@@ -1,7 +1,9 @@
 # GPUI Kit component migration
 
-This port is in progress; the [parity tracker](#parity-tracker) lists every
-GPUI Kit component and its status. Batch 1 compared
+Every component GPUI Kit documents now has a ui2 counterpart: the
+[parity tracker](#parity-tracker) lists all 80 pages of its catalog, 78
+components marked done with the batch that added them and two pages that are
+not components (the index and the window root). Batch 1 compared
 UI2 at `15709bb28ddb4a05c499f52936a11cf0feedb22d` with
 [GPUI Kit](https://github.com/longbridge/gpui-kit) at
 `1b6059c13315dc5c304759ad3aa666e0b6e301d8`.
@@ -133,7 +135,7 @@ exists; **Planned** — scheduled for the named batch. Per-group details live in
 
 | GPUI Kit | ui2 | Status | Notes |
 | --- | --- | --- | --- |
-| accordion | `accordion` | Existing | Feature audit pending |
+| accordion | `accordion` | Done (batch 10) | Stack layout, multiple open, sizes, animation; [disclosure](gpui-kit/disclosure.md) |
 | alert-dialog | `alert_dialog` | Done (batch 3) | Native `confirm` also exists; [dialogs](gpui-kit/dialogs.md) |
 | alert | `inline_alert` | Done (batch 1) |  |
 | attachment | `attachment`, `attachment_group` | Done (batch 7) | Upload states, previews, groups; [attachments](gpui-kit/attachments.md) |
@@ -142,9 +144,9 @@ exists; **Planned** — scheduled for the named batch. Per-group details live in
 | bubble | `bubble`, `bubble_group` | Done (batch 7) | Variants, groups, reactions; [chat](gpui-kit/chat.md) |
 | button | `styled_button`, `button_group`, `button` | Done (batch 2) | Variants and button group; [choice](gpui-kit/choice.md) |
 | calendar | `calendar`, `CalendarDate` | Done (batch 4) | [datetime](gpui-kit/datetime.md) |
-| carousel | `carousel` | Existing | Feature audit pending |
+| carousel | `carousel` | Done (batch 10) | Controls, indicators, several per view, drag, autoplay; [disclosure](gpui-kit/disclosure.md) |
 | chart | `line_chart`, `bar_chart`, `area_chart`, `pie_chart`, `radar_chart`, `candlestick_chart`, `sankey_chart` | Done (batch 9) | Hover tooltips, legends, appear motion; [plot](gpui-kit/plot.md), [charts](gpui-kit/charts.md). The older `chart` stays |
-| checkbox | `checkbox` | Existing | Feature audit pending |
+| checkbox | `styled_checkbox`, `checkbox_group`, `checkbox` | Done (batch 10) | Description, indeterminate, sizes, groups; [controls](gpui-kit/controls.md) |
 | clipboard | `clipboard_button`, `copyable_text` | Done (batch 3) | [notifications](gpui-kit/notifications.md) |
 | collapsible | `collapsible` | Done (batch 1) |  |
 | color-picker | `color_picker`, `color_picker_popover`, `ColorHsva` | Done (batch 4) | [color](gpui-kit/color.md) |
@@ -164,12 +166,12 @@ exists; **Planned** — scheduled for the named batch. Per-group details live in
 | group-box | `group_box` | Done (batch 1) |  |
 | hover-card | `hover_card`, `HoverCardState` | Done (batch 3) | [popovers](gpui-kit/popovers.md) |
 | icon | `named_icon`, `IconName`, `symbol:` images | Done (batch 2) | [feedback](gpui-kit/feedback.md) |
-| image | `image` | Existing | Feature audit pending |
+| image | `image_box`, `image` | Done (batch 10) | Fit modes, rounded corners, loading and fallback; [basics](gpui-kit/basics.md) |
 | index | — | Not applicable | Upstream documentation landing page |
 | input-group | `input_group` | Done (batch 2) | [inputs](gpui-kit/inputs.md) |
 | input | `text_field`, `input_group` | Done (batch 2) | Prefix, suffix and clear button through `input_group`; [inputs](gpui-kit/inputs.md) |
 | kbd | `kbd` | Done (batch 1) |  |
-| label | `label` | Existing |  |
+| label | `styled_label`, `label` | Done (batch 10) | Secondary text, highlights, masking; [basics](gpui-kit/basics.md) |
 | list | `list`, `searchable_list` | Done (batch 5) | [lists](gpui-kit/lists.md) |
 | marker | `marker` | Done (batch 7) | [chat](gpui-kit/chat.md) |
 | menu | `dropdown_menu`, `set_menu_bar`, `Element.menu`, tray | Done (batch 3) | Dropdown/popup menus with submenus; [popovers](gpui-kit/popovers.md) |
@@ -187,31 +189,31 @@ exists; **Planned** — scheduled for the named batch. Per-group details live in
 | rating | `rating` | Done (batch 2) | [choice](gpui-kit/choice.md) |
 | resizable | `resizable_panels`, `resize_handle` | Done (batch 6) | [panels](gpui-kit/panels.md) |
 | root | `screen` | Not applicable | GPUI window root; ui2 builds a `screen` |
-| scrollable | `scroll` | Existing |  |
+| scrollable | `scrollable`, `scrollbar`, `scroll` | Done (batch 10) | Stacks, metrics, scroll-to, themed scrollbars; [basics](gpui-kit/basics.md) |
 | select | `select_box`, `dropdown`, `spinner` | Done (batch 5) | Searchable and multiple select; [pickers](gpui-kit/pickers.md) |
 | settings | `settings` | Done (batch 6) | Pages, groups, search, reset; [settings](gpui-kit/settings.md) |
 | sheet | `sheet` | Done (batch 3) | [dialogs](gpui-kit/dialogs.md) |
 | shimmer | `shimmer`, `shimmer_text` | Done (batch 2) | [feedback](gpui-kit/feedback.md) |
 | sidebar | `sidebar`, `sidebar_toggle_button` | Done (batch 6) | Groups, nested items, icon rail; [sidebar](gpui-kit/sidebar.md) |
 | skeleton | `skeleton` | Done (batch 1) |  |
-| slider | `slider` | Existing | Feature audit pending |
+| slider | `styled_slider`, `slider` | Done (batch 10) | Range, log scale, marks, value labels; [controls](gpui-kit/controls.md) |
 | speech | `speech_button`, `SpeechSession`, `SpeechRecognizer` | Done (batch 7) | macOS recognizer in bundled apps; elsewhere apps plug one in; [speech](gpui-kit/speech.md) |
 | spinner | `loading_spinner` | Done (batch 2) | `spinner` is ui2's selection control; [feedback](gpui-kit/feedback.md) |
 | status-bar | `status_bar` | Done (batch 6) | [bars](gpui-kit/bars.md) |
 | stepper | `stepper` | Done (batch 2) | [choice](gpui-kit/choice.md) |
-| switch | `switch_control` | Existing |  |
+| switch | `styled_switch`, `switch_control` | Done (batch 10) | Label, description, sizes, loading; [controls](gpui-kit/controls.md) |
 | table | `table` | Done (batch 5) | [tables](gpui-kit/tables.md) |
-| tabs | `tabbed_panel` | Existing | Feature audit pending |
+| tabs | `tab_bar`, `tabbed_panel` | Done (batch 10) | Six variants, closable, overflow, reorder; [navigation2](gpui-kit/navigation2.md) |
 | tag | `tag` | Done (batch 1) |  |
 | text-view | `rich_text_view`, `text_view_markdown`, `text_view_html` | Done (batch 8) | Markdown and HTML, streaming fade, highlights; [textview](gpui-kit/textview.md) |
-| textarea | `text_area` | Existing |  |
+| textarea | `textarea`, `text_area` | Done (batch 10) | Auto-grow, counter, max length; [basics](gpui-kit/basics.md) |
 | theme | `ComponentTheme`, `component_theme_registry` | Done (batch 9) | Theme sets from JSON, built-in sets, gradients, system appearance; [theme](gpui-kit/theme.md) |
 | time-field | `time_field` | Done (batch 4) | [datetime](gpui-kit/datetime.md) |
 | title-bar | `title_bar` | Done (batch 6) | Uses `set_window_chrome`; [bars](gpui-kit/bars.md) |
 | toggle | `toggle`, `toggle_group` | Done (batch 2) | [choice](gpui-kit/choice.md) |
 | toolbar | `toolbar` | Done (batch 6) | [bars](gpui-kit/bars.md) |
-| tooltip | `with_tooltip` | Existing |  |
-| tree | `tree_view` | Existing | Feature audit pending |
+| tooltip | `tooltip_popup`, `with_tooltip` | Done (batch 10) | Delays, rich content, shortcuts; [basics](gpui-kit/basics.md) |
+| tree | `tree_view` | Done (batch 10) | Selection, check boxes, lazy children, virtualized, drag; [navigation2](gpui-kit/navigation2.md) |
 | virtual-list | `virtual_list`, `virtual_list_fixed`, `virtual_list_sized` | Done (batch 5) | [lists](gpui-kit/lists.md) |
 
 GPUI's application runtime, WebAssembly and JavaScript extension infrastructure

@@ -108,6 +108,12 @@ fn gradient_sorted_stops(gradient Gradient) []GradientStop {
 	return stops
 }
 
+// slider_faded_color is a disabled slider part's color: halfway to the track.
+fn slider_faded_color(color u32, track u32) u32 {
+	return mix_channel(color, track, 16, 0.5) | mix_channel(color, track, 8, 0.5) | mix_channel(color,
+		track, 0, 0.5)
+}
+
 fn mix_channel(a u32, b u32, shift u32, t f64) u32 {
 	ca := f64((a >> shift) & 0xff)
 	cb := f64((b >> shift) & 0xff)

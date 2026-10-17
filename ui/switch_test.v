@@ -40,3 +40,12 @@ fn test_switch_chrome_shrinks_for_small_bounds() {
 	assert track.height == 12
 	assert switch_thumb_frame(track, false).width == 8
 }
+
+fn test_switch_config_sets_enabled_and_accessibility_label() {
+	el := switch_control(id: 'wifi', enabled: false, accessibility_label: 'Wi-Fi')
+	assert !el.enabled
+	assert el.accessibility_label == 'Wi-Fi'
+	assert switch_control(id: 'wifi').enabled
+	assert switch_control(id: 'wifi').accessibility_label == 'Switch'
+	assert switch_control(id: 'wifi', accessibility_label: '').accessibility_label == 'Switch'
+}

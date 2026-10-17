@@ -189,7 +189,7 @@ fn test_macos_transparent_box_controls_disable_native_backgrounds() {
 	button_view := native_new_button(native_rect(0, 0, 96, 40), 'Clear', BoxStyle{},
 		0xffffff, 15, false, false, false, 0, '', true)
 	scroll_view := native_new_scroll(native_rect(0, 0, 120, 80), BoxStyle{}, false,
-		.vertical_only)
+		.vertical_only, false)
 	toggle_view := native_new_toggle_button(toggle_button(
 		title: 'Clear toggle'
 		box: transparent_box
@@ -238,7 +238,7 @@ fn test_macos_scroll_mode_selects_scrollers_and_document_size() {
 		view('', rect(200, 0, 200, 300), BoxStyle{}, []),
 	])
 	scroll_view := native_new_scroll(element_rect(columns.frame), columns.box, false,
-		columns.scroll_mode)
+		columns.scroll_mode, false)
 	defer {
 		macos.release(scroll_view)
 	}
@@ -286,7 +286,7 @@ fn test_macos_scroll_mode_selects_scrollers_and_document_size() {
 	// Before the scroll view has been laid out there is only the frame to go by.
 	assert scroll_document_size(narrow, 0, 0).width == 120
 
-	native_set_scroll_axes(scroll_view, .both)
+	native_set_scroll_axes(scroll_view, .both, false)
 	assert macos.msg_bool(scroll_view, 'hasVerticalScroller')
 	assert macos.msg_bool(scroll_view, 'hasHorizontalScroller')
 }
@@ -297,14 +297,14 @@ fn test_macos_scroll_gesture_passes_to_an_enclosing_view_only_when_it_cannot_be_
 	defer {
 		macos.release(pool)
 	}
-	outer := native_new_scroll(native_rect(0, 0, 400, 300), BoxStyle{}, false, .horizontal_only)
+	outer := native_new_scroll(native_rect(0, 0, 400, 300), BoxStyle{}, false, .horizontal_only, false)
 	defer {
 		macos.release(outer)
 	}
 	outer_document := native_new_flipped_view(native_rect(0, 0, 1200, 300), BoxStyle{})
 	native_set_document_view(outer, outer_document)
 	macos.release(outer_document)
-	inner := native_new_scroll(native_rect(0, 0, 200, 150), BoxStyle{}, false, .horizontal_only)
+	inner := native_new_scroll(native_rect(0, 0, 200, 150), BoxStyle{}, false, .horizontal_only, false)
 	inner_document := native_new_flipped_view(native_rect(0, 0, 200, 150), BoxStyle{})
 	native_set_document_view(inner, inner_document)
 	macos.release(inner_document)

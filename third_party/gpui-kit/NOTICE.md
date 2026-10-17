@@ -49,6 +49,10 @@ Each carries an SPDX header naming it.
 | `ui/component_theme_registry_parse.v` | The color, gradient and fallback rules of GPUI Kit's theme file format (`crates/component/src/theme/`). |
 | `ui/component_theme_registry_test.v` | Theme parsing cases from the same crate, beside new tests. |
 | `ui/component_editor_theme.v` | The light and dark syntax palettes of GPUI Kit's `default-theme.json`. |
+| `ui/component_navigation2_tabs.v` | The tab variants' sizes, paddings, gaps and colors, the sliding indicator and the reveal-with-peek rule of `crates/component/src/tab/tab.rs` and `tab_bar.rs`. |
+| `ui/component_navigation2_tabs_draw.v` | The folder tab outline and the variant drawing of the same files. |
+| `ui/component_navigation2_tree.v` | The keyboard model and reveal of `crates/base/src/tree.rs`. |
+| `ui/component_basics_test.v` | Label highlight cases from `crates/component/src/label.rs`, beside new tests. |
 
 `ui/component_charts_special_sankey_layout.v` is a new V implementation of the
 d3-sankey layout algorithm (https://github.com/d3/d3-sankey, Copyright 2015 Mike
