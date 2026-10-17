@@ -23,6 +23,11 @@ Each carries an SPDX header naming it.
 | `ui/component_popovers.v` | The hover-card timing rules of `crates/base/src/hover_card.rs`. |
 | `ui/component_popovers_menu.v` | The keyboard navigation rules of `crates/component/src/menu/popup_menu.rs`. |
 | `ui/component_popovers_test.v` | Placement cases from upstream's positioner tests, beside new tests. |
+| `ui/component_datetime_calendar.v` | The range-selection rule, matcher kinds and days/months/years views of `crates/base/src/calendar.rs`. |
+| `ui/component_datetime_time.v` | The segment editing rules of `SegmentEditor` in `crates/base/src/time_field.rs`. |
+| `ui/component_datetime_test.v` | Month-grid, range and time-segment cases from those files, beside new tests. |
+| `ui/component_color_model.v` | The hex formats read and written by `parse_hex`/`hex_string` in `crates/base/src/color_picker.rs`. |
+| `ui/component_color_test.v` | That file's malformed-hex cases, beside new tests. |
 
 Every other component implementation is new V code following the GPUI Kit
 catalog's documented concepts, not copied Rust. It, the examples and the

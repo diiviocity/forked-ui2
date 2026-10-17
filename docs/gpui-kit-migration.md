@@ -141,17 +141,17 @@ exists; **Planned** — scheduled for the named batch. Per-group details live in
 | badge | `badge` | Done (batch 1) |  |
 | bubble | — | Planned (batch 7) |  |
 | button | `styled_button`, `button_group`, `button` | Done (batch 2) | Variants and button group; [choice](gpui-kit/choice.md) |
-| calendar | — | Planned (batch 4) |  |
+| calendar | `calendar`, `CalendarDate` | Done (batch 4) | [datetime](gpui-kit/datetime.md) |
 | carousel | `carousel` | Existing | Feature audit pending |
 | chart | `chart` | Partial | Line, bar, scatter, pie, doughnut; area, candlestick, radar, sankey, stacking in batch 9 |
 | checkbox | `checkbox` | Existing | Feature audit pending |
 | clipboard | `clipboard_button`, `copyable_text` | Done (batch 3) | [notifications](gpui-kit/notifications.md) |
 | collapsible | `collapsible` | Done (batch 1) |  |
-| color-picker | — | Planned (batch 4) |  |
+| color-picker | `color_picker`, `color_picker_popover`, `ColorHsva` | Done (batch 4) | [color](gpui-kit/color.md) |
 | combobox | — | Planned (batch 5) |  |
 | command | — | Planned (batch 5) |  |
 | data-table | — | Planned (batch 5) |  |
-| date-picker | — | Planned (batch 4) |  |
+| date-picker | `date_picker`, `date_picker_overlay` | Done (batch 4) | [datetime](gpui-kit/datetime.md) |
 | description-list | `description_list` | Done (batch 1) |  |
 | dialog | `modal_dialog`, `modal_view`, `popup` | Done (batch 3) | [dialogs](gpui-kit/dialogs.md) |
 | diff | — | Planned (batch 8) |  |
@@ -206,7 +206,7 @@ exists; **Planned** — scheduled for the named batch. Per-group details live in
 | text-view | — | Planned (batch 8) | Markdown/HTML |
 | textarea | `text_area` | Existing |  |
 | theme | `ComponentTheme` | Partial | Light/dark tokens; theme registry later |
-| time-field | — | Planned (batch 4) |  |
+| time-field | `time_field` | Done (batch 4) | [datetime](gpui-kit/datetime.md) |
 | title-bar | — | Planned (batch 6) |  |
 | toggle | `toggle`, `toggle_group` | Done (batch 2) | [choice](gpui-kit/choice.md) |
 | toolbar | — | Planned (batch 6) |  |
