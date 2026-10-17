@@ -3378,7 +3378,10 @@ fn page_focused_text_area(direction int) {
 	// come back empty so the default font is used instead.
 	fn text_font_file(family string, bold bool, italic bool) string {
 		if family.len == 0 {
-			return ''
+			// gg draws the default font's regular and bold faces itself, but has no
+			// italic of it, and bold italic came out bold only: those come from the
+			// default font's own italic files when it has them.
+			return if italic { default_italic_font_file(bold) } else { '' }
 		}
 		key := '${family}:${bold}:${italic}'
 		if path := g_font_family_files[key] {
@@ -3404,6 +3407,26 @@ fn page_focused_text_area(direction int) {
 				// Falling back to the proportional default would break the
 				// column alignment the element asked for in the first place.
 				path = font_mono_path(g_font_files, family, bold, italic)
+			}
+		}
+		g_font_family_files[key] = path
+		return path
+	}
+
+	// default_italic_font_file is the italic (or bold italic) file beside the
+	// default font's regular one, as Roboto-Italic.ttf is beside
+	// Roboto-Regular.ttf, or '' when there is none.
+	fn default_italic_font_file(bold bool) string {
+		key := ':default:${bold}:true'
+		if path := g_font_family_files[key] {
+			return path
+		}
+		regular, _ := font_paths()
+		mut path := ''
+		if regular.contains('Regular') {
+			candidate := regular.replace('Regular', if bold { 'BoldItalic' } else { 'Italic' })
+			if os.is_file(candidate) {
+				path = candidate
 			}
 		}
 		g_font_family_files[key] = path

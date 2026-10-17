@@ -48,6 +48,7 @@ Each carries an SPDX header naming it.
 | `ui/component_theme_registry_builtin.v` | Theme sets from GPUI Kit's bundled `themes/` (revision `d4c56812`), whose palettes credit Catppuccin, Ethan Schoonover (Solarized), Pavel Pertsev (Gruvbox), Folke Lemaitre (Tokyo Night), Ayu and shadcn. |
 | `ui/component_theme_registry_parse.v` | The color, gradient and fallback rules of GPUI Kit's theme file format (`crates/component/src/theme/`). |
 | `ui/component_theme_registry_test.v` | Theme parsing cases from the same crate, beside new tests. |
+| `ui/component_editor_theme.v` | The light and dark syntax palettes of GPUI Kit's `default-theme.json`. |
 
 `ui/component_charts_special_sankey_layout.v` is a new V implementation of the
 d3-sankey layout algorithm (https://github.com/d3/d3-sankey, Copyright 2015 Mike

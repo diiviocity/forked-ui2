@@ -154,10 +154,10 @@ exists; **Planned** — scheduled for the named batch. Per-group details live in
 | date-picker | `date_picker`, `date_picker_overlay` | Done (batch 4) | [datetime](gpui-kit/datetime.md) |
 | description-list | `description_list` | Done (batch 1) |  |
 | dialog | `modal_dialog`, `modal_view`, `popup` | Done (batch 3) | [dialogs](gpui-kit/dialogs.md) |
-| diff | — | Planned (batch 8) |  |
+| diff | `diff_view`, `diff_state`, `parse_diff` | Done (batch 8) | Unified and split, patches, conflicts, virtualized; [diff](gpui-kit/diff.md) |
 | dock | `dock_area`, `DockLayout` | Done (batch 6) | Tabbed docks, resizing, zoom, saved layouts; [panels](gpui-kit/panels.md) |
 | dropdown_button | `dropdown_button` | Done (batch 3) | [popovers](gpui-kit/popovers.md) |
-| editor | `text_editor`, `text_area` | Partial | Code-editor features in batch 8 |
+| editor | `code_editor`, `text_editor`, `text_area` | Done (batch 8) | Highlighting, gutter, search, completions, editing rules; [editor](gpui-kit/editor.md) |
 | empty | `empty_state` | Done (batch 1) |  |
 | focus-trap | `focus_trap_next`, `FocusTrap` | Done (batch 3) | [dialogs](gpui-kit/dialogs.md) |
 | form | `form`, `form_field` | Done (batch 6) | Grid layout, sections, validation; [form](gpui-kit/form.md) |
@@ -203,7 +203,7 @@ exists; **Planned** — scheduled for the named batch. Per-group details live in
 | table | `table` | Done (batch 5) | [tables](gpui-kit/tables.md) |
 | tabs | `tabbed_panel` | Existing | Feature audit pending |
 | tag | `tag` | Done (batch 1) |  |
-| text-view | — | Planned (batch 8) | Markdown/HTML |
+| text-view | `rich_text_view`, `text_view_markdown`, `text_view_html` | Done (batch 8) | Markdown and HTML, streaming fade, highlights; [textview](gpui-kit/textview.md) |
 | textarea | `text_area` | Existing |  |
 | theme | `ComponentTheme`, `component_theme_registry` | Done (batch 9) | Theme sets from JSON, built-in sets, gradients, system appearance; [theme](gpui-kit/theme.md) |
 | time-field | `time_field` | Done (batch 4) | [datetime](gpui-kit/datetime.md) |

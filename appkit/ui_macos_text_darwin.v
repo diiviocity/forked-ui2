@@ -225,11 +225,24 @@ fn native_text_view_add_link(tv macos.Id, location u64, length u64, link string)
 	macos.release(attrs)
 }
 
-fn native_control_set_attributed_title(control macos.Id, text string, color u32, size f64, family string, bold bool, italic bool, underline bool) {
+// native_control_set_attributed_title gives a label italic or underlined text.
+// The string carries its own paragraph style, which wins over the field's, so
+// the label's alignment and line breaking go in it too; without them it drew
+// left-aligned whatever it was asked for.
+fn native_control_set_attributed_title(control macos.Id, text string, color u32, size f64, family string, bold bool, italic bool, underline bool, align int, lines int) {
 	if objc_is_nil(control) {
 		return
 	}
 	attrs := native_text_attributes(color, 0, size, family, bold, italic, underline, false, '')
+	paragraph := macos.msg_id(macos.alloc('NSMutableParagraphStyle'), 'init')
+	macos.msg_void_i64(paragraph, 'setAlignment:', native_text_alignment(align))
+	macos.msg_void_i64(paragraph, 'setLineBreakMode:', if lines == 1 {
+		i64(ns_line_break_by_truncating_tail)
+	} else {
+		i64(ns_line_break_by_word_wrapping)
+	})
+	objc_dict_set(attrs, objc_attr_paragraph_style, paragraph)
+	macos.release(paragraph)
 	attributed := macos.msg_id2(macos.alloc('NSAttributedString'), 'initWithString:attributes:', macos.nsstring(text), attrs)
 	if macos.responds_to(control, 'setAttributedTitle:') {
 		macos.msg_void1(control, 'setAttributedTitle:', attributed)

@@ -285,6 +285,7 @@ fn native_accessibility_role(role string) macos.Id {
 		// WebKit's role for headings, which VoiceOver's rotor jumps between.
 		'heading' { macos.nsstring('AXHeading') }
 		'tooltip' { macos.nsstring('AXHelpTag') }
+		'note', 'search' { macos.nsstring('AXGroup') }
 		else { if role.starts_with('AX') { macos.nsstring(role) } else { objc_nil() } }
 	}
 }
