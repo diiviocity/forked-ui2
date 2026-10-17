@@ -143,7 +143,7 @@ exists; **Planned** — scheduled for the named batch. Per-group details live in
 | button | `styled_button`, `button_group`, `button` | Done (batch 2) | Variants and button group; [choice](gpui-kit/choice.md) |
 | calendar | `calendar`, `CalendarDate` | Done (batch 4) | [datetime](gpui-kit/datetime.md) |
 | carousel | `carousel` | Existing | Feature audit pending |
-| chart | `chart` | Partial | Line, bar, scatter, pie, doughnut; area, candlestick, radar, sankey, stacking in batch 9 |
+| chart | `line_chart`, `bar_chart`, `area_chart`, `pie_chart`, `radar_chart`, `candlestick_chart`, `sankey_chart` | Done (batch 9) | Hover tooltips, legends, appear motion; [plot](gpui-kit/plot.md), [charts](gpui-kit/charts.md). The older `chart` stays |
 | checkbox | `checkbox` | Existing | Feature audit pending |
 | clipboard | `clipboard_button`, `copyable_text` | Done (batch 3) | [notifications](gpui-kit/notifications.md) |
 | collapsible | `collapsible` | Done (batch 1) |  |
@@ -179,7 +179,7 @@ exists; **Planned** — scheduled for the named batch. Per-group details live in
 | number-input | `number_input` | Done (batch 2) | [inputs](gpui-kit/inputs.md) |
 | otp-input | `otp_input` | Done (batch 2) | [inputs](gpui-kit/inputs.md) |
 | pagination | `pagination` | Done (batch 1) |  |
-| plot | — | Planned (batch 9) |  |
+| plot | `PlotLinearScale`, `PlotBandScale`, `plot_line_path`, `plot_stack`, `plot_axis` | Done (batch 9) | Scales, shape generators, axes; [plot](gpui-kit/plot.md) |
 | popover | `popover`, `popover_place` | Done (batch 3) | [popovers](gpui-kit/popovers.md) |
 | progress | `progress_bar`, `linear_progress`, `progress_circle` | Done (batch 2) | [feedback](gpui-kit/feedback.md) |
 | questionnaire | `questionnaire` | Done (batch 7) | [questionnaire](gpui-kit/questionnaire.md) |
@@ -205,7 +205,7 @@ exists; **Planned** — scheduled for the named batch. Per-group details live in
 | tag | `tag` | Done (batch 1) |  |
 | text-view | — | Planned (batch 8) | Markdown/HTML |
 | textarea | `text_area` | Existing |  |
-| theme | `ComponentTheme` | Partial | Light/dark tokens; theme registry later |
+| theme | `ComponentTheme`, `component_theme_registry` | Done (batch 9) | Theme sets from JSON, built-in sets, gradients, system appearance; [theme](gpui-kit/theme.md) |
 | time-field | `time_field` | Done (batch 4) | [datetime](gpui-kit/datetime.md) |
 | title-bar | `title_bar` | Done (batch 6) | Uses `set_window_chrome`; [bars](gpui-kit/bars.md) |
 | toggle | `toggle`, `toggle_group` | Done (batch 2) | [choice](gpui-kit/choice.md) |

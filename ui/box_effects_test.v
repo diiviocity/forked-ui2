@@ -104,3 +104,21 @@ fn test_scrollbar_colors_follow_a_dark_backdrop() {
 	assert scrollbar_tint(0x000000, 1.0) == 0xffffff
 	assert scrollbar_tint(0x102030, 0) == 0x102030
 }
+
+fn test_gradient_unit_points_keep_bands_perpendicular_on_a_wide_box() {
+	w, h := 300.0, 100.0
+	line := gradient_line(45, w, h)
+	sx, sy, ex, ey := gradient_unit_points(line, w, h)
+	ux, uy := ex - sx, ey - sy
+	// Where CoreAnimation puts a point along its unit-square line has to match
+	// where the gradient line in points puts it, all over the box.
+	for p in [[0.0, 0.0], [300.0, 100.0], [150.0, 50.0], [300.0, 0.0], [40.0, 90.0]] {
+		ca := ((p[0] / w - sx) * ux + (p[1] / h - sy) * uy) / (ux * ux + uy * uy)
+		assert math.abs(unit_clamp(ca) - gradient_position(line, p[0], p[1])) < 1e-9
+	}
+	// A square box keeps the plain fractions.
+	square := gradient_line(30, 100, 100)
+	a, b, c, d := gradient_unit_points(square, 100, 100)
+	assert math.abs(a - square.x0 / 100) < 1e-12 && math.abs(c - square.x1 / 100) < 1e-12
+	assert math.abs(b - square.y0 / 100) < 1e-12 && math.abs(d - square.y1 / 100) < 1e-12
+}

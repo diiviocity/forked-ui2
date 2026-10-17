@@ -45,6 +45,14 @@ Each carries an SPDX header naming it.
 | `ui/component_speech.v` | The session lifecycle and level meter of `crates/component/src/speech/state.rs` and `level.rs`, and the phrase spacing and utterance-restart check of `system/macos.rs`. |
 | `ui/speech.v` | The recognition result handling of `crates/component/src/speech/system/macos.rs`. |
 | `ui/component_speech_test.v` | Phrase-spacing and utterance-reset cases from `system/macos.rs`, beside new tests. |
+| `ui/component_theme_registry_builtin.v` | Theme sets from GPUI Kit's bundled `themes/` (revision `d4c56812`), whose palettes credit Catppuccin, Ethan Schoonover (Solarized), Pavel Pertsev (Gruvbox), Folke Lemaitre (Tokyo Night), Ayu and shadcn. |
+| `ui/component_theme_registry_parse.v` | The color, gradient and fallback rules of GPUI Kit's theme file format (`crates/component/src/theme/`). |
+| `ui/component_theme_registry_test.v` | Theme parsing cases from the same crate, beside new tests. |
+
+`ui/component_charts_special_sankey_layout.v` is a new V implementation of the
+d3-sankey layout algorithm (https://github.com/d3/d3-sankey, Copyright 2015 Mike
+Bostock, BSD-3-Clause), which GPUI Kit's SankeyChart also follows; no d3 code is
+included.
 
 Every other component implementation is new V code following the GPUI Kit
 catalog's documented concepts, not copied Rust. It, the examples and the

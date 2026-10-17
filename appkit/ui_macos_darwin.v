@@ -2133,6 +2133,8 @@ fn native_set_view_shape(view NativeView, el Element) {
 		native_set_associated_object(view, key, layer)
 		macos.release(layer)
 		macos.msg_void_f64(layer, 'setZPosition:', -999)
+		// What falls outside the frame is clipped, as in the custom renderer.
+		macos.msg_void_bool(layer, 'setMasksToBounds:', true)
 	}
 	if macos.msg_id(layer, 'superlayer') != parent {
 		macos.msg_void1(parent, 'addSublayer:', layer)
@@ -2425,7 +2427,18 @@ fn native_place_label_text(label_view NativeView, frame NativeRect, lines int, v
 		drawn_lines = 1
 	}
 	native_apply_label_valign(label_view, frame, drawn_lines, valign, boxed)
+	if drawn_lines == 1 && macos.msg_i64(label_view, 'alignment') == native_text_alignment(1) {
+		// A centered line cut to the width measure_text_width reports came out
+		// shortened to an ellipsis, though the same field fits it left or right
+		// aligned. The field is widened by a few points on each side, which keeps
+		// the text where it was and gives AppKit the room it wants.
+		field_frame := macos.msg_rect(label_view, 'frame')
+		macos.msg_void_rect(label_view, 'setFrame:', macos.rect(field_frame.x - native_centered_label_slack,
+			field_frame.y, field_frame.width + native_centered_label_slack * 2, field_frame.height))
+	}
 }
+
+const native_centered_label_slack = 4.0
 
 fn native_label_fits_one_line(label_view NativeView, frame NativeRect) bool {
 	wrapped := native_label_content_height(label_view, frame, 0)
@@ -3218,11 +3231,12 @@ fn native_set_gradient_layer(view NativeView, layer macos.Id, box BoxStyle, opac
 	line := gradient_line(box.gradient.angle, layer_bounds.width, layer_bounds.height)
 	w := if layer_bounds.width > 0 { layer_bounds.width } else { 1.0 }
 	h := if layer_bounds.height > 0 { layer_bounds.height } else { 1.0 }
+	sx, sy, ex, ey := gradient_unit_points(line, w, h)
 	flipped := macos.msg_bool(view, 'isFlipped')
-	y0 := if flipped { line.y0 / h } else { 1 - line.y0 / h }
-	y1 := if flipped { line.y1 / h } else { 1 - line.y1 / h }
-	macos.msg_void_point(gradient, 'setStartPoint:', macos.point(line.x0 / w, y0))
-	macos.msg_void_point(gradient, 'setEndPoint:', macos.point(line.x1 / w, y1))
+	y0 := if flipped { sy } else { 1 - sy }
+	y1 := if flipped { ey } else { 1 - ey }
+	macos.msg_void_point(gradient, 'setStartPoint:', macos.point(sx, y0))
+	macos.msg_void_point(gradient, 'setEndPoint:', macos.point(ex, y1))
 	macos.msg_void_bool(gradient, 'setHidden:', false)
 }
 
