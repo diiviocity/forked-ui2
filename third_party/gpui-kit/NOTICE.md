@@ -28,6 +28,9 @@ Each carries an SPDX header naming it.
 | `ui/component_datetime_test.v` | Month-grid, range and time-segment cases from those files, beside new tests. |
 | `ui/component_color_model.v` | The hex formats read and written by `parse_hex`/`hex_string` in `crates/base/src/color_picker.rs`. |
 | `ui/component_color_test.v` | That file's malformed-hex cases, beside new tests. |
+| `ui/component_lists.v` | The row model and wrapping keyboard navigation of `crates/component/src/list/cache.rs` and `list.rs`. |
+| `ui/component_lists_search.v` | The matching, group and highlight rules of `crates/component/src/searchable_list/`. |
+| `ui/component_pickers_command.v` | The filtering and navigation rules of `crates/component/src/command/state.rs`. |
 
 Every other component implementation is new V code following the GPUI Kit
 catalog's documented concepts, not copied Rust. It, the examples and the

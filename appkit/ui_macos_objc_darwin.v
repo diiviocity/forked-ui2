@@ -248,19 +248,23 @@ fn objc_place_subview(parent macos.Id, child macos.Id, previous macos.Id) {
 
 // native_accessibility_role maps ui2's (ARIA-style) role names onto AppKit roles,
 // following how WebKit exposes the same ARIA roles. A nil result leaves the view's
-// own role alone: that is right for `presentation`, for roles ui2 puts on native
-// buttons that must stay pressable (`listitem`, `treeitem`), and for names AppKit
-// has no role for, which it would otherwise be handed verbatim.
+// own role alone: that is right for `presentation`, for roles ui2 puts on rows and
+// native buttons that must stay pressable (`listitem`, `treeitem`, `option`, `row`,
+// `cell`, `columnheader`), and for names AppKit has no role for, which it would
+// otherwise be handed verbatim.
 fn native_accessibility_role(role string) macos.Id {
 	return match role {
-		'', 'presentation', 'listitem', 'treeitem' { objc_nil() }
+		'', 'presentation', 'listitem', 'treeitem', 'option', 'row', 'cell', 'columnheader' {
+			objc_nil()
+		}
 		'button' { macos.nsstring('AXButton') }
 		'text', 'label' { macos.nsstring('AXStaticText') }
 		'text_field', 'textbox' { macos.nsstring('AXTextField') }
 		'image', 'img' { macos.nsstring('AXImage') }
 		// Structural roles have no AppKit counterpart of their own; VoiceOver reads
 		// them as groups. A tree is one too: an outline needs rows AppKit can walk.
-		'group', 'navigation', 'status', 'alert', 'dialog', 'alertdialog', 'tree' {
+		'group', 'navigation', 'status', 'alert', 'dialog', 'alertdialog', 'tree', 'table', 'grid',
+		'rowgroup' {
 			macos.nsstring('AXGroup')
 		}
 		'separator' { macos.nsstring('AXSplitter') }
@@ -275,7 +279,7 @@ fn native_accessibility_role(role string) macos.Id {
 		'radiogroup' { macos.nsstring('AXRadioGroup') }
 		'menu' { macos.nsstring('AXMenu') }
 		'menuitem', 'menuitemcheckbox', 'menuitemradio' { macos.nsstring('AXMenuItem') }
-		'list' { macos.nsstring('AXList') }
+		'list', 'listbox' { macos.nsstring('AXList') }
 		else { if role.starts_with('AX') { macos.nsstring(role) } else { objc_nil() } }
 	}
 }

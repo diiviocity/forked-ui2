@@ -294,21 +294,6 @@ both valued with the hex color or "none". The backdrop is `presentation`.
 | Styling through `Styled`/`refine_style` | Omitted: the theme and size set the look, as for other ui2 components |
 | Theme-derived default featured colors (`theme.red`, `red_light`, ...) | `ComponentTheme` has no such colors; the default featured row is the palette's middle shades, gray, black and white |
 
-## Changes requested outside this group
-
-- AppKit creates colors with `colorWithCalibratedRed:green:blue:alpha:`
-  (Generic RGB), so `#EF4444` is drawn as about `#E3675C` and every swatch
-  and gradient is off from its hex value (the custom renderer draws them
-  exactly). `colorWithSRGBRed:green:blue:alpha:` would make colors match.
-- The custom renderer could draw a two-stop gradient at 0 or 90 degrees on a
-  square box as one quad (it is linear there), which would make the layered
-  area cheap enough to use on the custom renderer as well.
-- `preload_images` in the custom renderer tries to read `symbol:` images from
-  disk and logs "could not read image" for every icon each frame.
-- NOTICE: `ui/component_color_model.v` (hex forms of `parse_hex`/`hex_string`
-  in `crates/base/src/color_picker.rs`) and `ui/component_color_test.v`
-  (malformed-hex cases from the same file).
-
 ## Attribution
 
 The hex forms the model accepts and writes follow `parse_hex` and

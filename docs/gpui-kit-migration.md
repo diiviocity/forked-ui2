@@ -148,9 +148,9 @@ exists; **Planned** — scheduled for the named batch. Per-group details live in
 | clipboard | `clipboard_button`, `copyable_text` | Done (batch 3) | [notifications](gpui-kit/notifications.md) |
 | collapsible | `collapsible` | Done (batch 1) |  |
 | color-picker | `color_picker`, `color_picker_popover`, `ColorHsva` | Done (batch 4) | [color](gpui-kit/color.md) |
-| combobox | — | Planned (batch 5) |  |
-| command | — | Planned (batch 5) |  |
-| data-table | — | Planned (batch 5) |  |
+| combobox | `combobox` | Done (batch 5) | [pickers](gpui-kit/pickers.md) |
+| command | `command_palette` | Done (batch 5) | [pickers](gpui-kit/pickers.md) |
+| data-table | `data_table` | Done (batch 5) | Virtualized rows, sorting, resizing, selection; [tables](gpui-kit/tables.md) |
 | date-picker | `date_picker`, `date_picker_overlay` | Done (batch 4) | [datetime](gpui-kit/datetime.md) |
 | description-list | `description_list` | Done (batch 1) |  |
 | dialog | `modal_dialog`, `modal_view`, `popup` | Done (batch 3) | [dialogs](gpui-kit/dialogs.md) |
@@ -170,7 +170,7 @@ exists; **Planned** — scheduled for the named batch. Per-group details live in
 | input | `text_field`, `input_group` | Done (batch 2) | Prefix, suffix and clear button through `input_group`; [inputs](gpui-kit/inputs.md) |
 | kbd | `kbd` | Done (batch 1) |  |
 | label | `label` | Existing |  |
-| list | — | Planned (batch 5) |  |
+| list | `list`, `searchable_list` | Done (batch 5) | [lists](gpui-kit/lists.md) |
 | marker | — | Planned (batch 7) |  |
 | menu | `dropdown_menu`, `set_menu_bar`, `Element.menu`, tray | Done (batch 3) | Dropdown/popup menus with submenus; [popovers](gpui-kit/popovers.md) |
 | message-scroller | — | Planned (batch 7) |  |
@@ -188,7 +188,7 @@ exists; **Planned** — scheduled for the named batch. Per-group details live in
 | resizable | — | Planned (batch 6) |  |
 | root | `screen` | Not applicable | GPUI window root; ui2 builds a `screen` |
 | scrollable | `scroll` | Existing |  |
-| select | `dropdown`, `spinner` | Partial | Searchable select in batch 5 |
+| select | `select_box`, `dropdown`, `spinner` | Done (batch 5) | Searchable and multiple select; [pickers](gpui-kit/pickers.md) |
 | settings | — | Planned (batch 6) |  |
 | sheet | `sheet` | Done (batch 3) | [dialogs](gpui-kit/dialogs.md) |
 | shimmer | `shimmer`, `shimmer_text` | Done (batch 2) | [feedback](gpui-kit/feedback.md) |
@@ -200,7 +200,7 @@ exists; **Planned** — scheduled for the named batch. Per-group details live in
 | status-bar | — | Planned (batch 6) |  |
 | stepper | `stepper` | Done (batch 2) | [choice](gpui-kit/choice.md) |
 | switch | `switch_control` | Existing |  |
-| table | — | Planned (batch 5) |  |
+| table | `table` | Done (batch 5) | [tables](gpui-kit/tables.md) |
 | tabs | `tabbed_panel` | Existing | Feature audit pending |
 | tag | `tag` | Done (batch 1) |  |
 | text-view | — | Planned (batch 8) | Markdown/HTML |
@@ -212,7 +212,7 @@ exists; **Planned** — scheduled for the named batch. Per-group details live in
 | toolbar | — | Planned (batch 6) |  |
 | tooltip | `with_tooltip` | Existing |  |
 | tree | `tree_view` | Existing | Feature audit pending |
-| virtual-list | — | Planned (batch 5) |  |
+| virtual-list | `virtual_list`, `virtual_list_fixed`, `virtual_list_sized` | Done (batch 5) | [lists](gpui-kit/lists.md) |
 
 GPUI's application runtime, WebAssembly and JavaScript extension infrastructure
 are not part of this port.

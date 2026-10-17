@@ -297,19 +297,11 @@ disabled, unknown or non-button addons.
 | Button `loading`, dropdown menus, popover triggers | Omitted: they need the loading and menu components of later batches. |
 | Context menu, paste hook, inline tokens, `Styled` overrides | Omitted: outside what ui2's native fields expose. |
 
-## Requested backend changes
+## Platform notes
 
-- **AppKit**: `native_update_text_field` ignores `TextStyle.align` and
-  `Element.padding_left`; the custom renderer and Win32 honor both. Applying
-  `setAlignment:` (the label path already maps `Align`) would let number inputs
-  center their text as GPUI Kit does.
-- **AppKit**: while a field is being edited, Backspace, Return, Escape and
-  typed characters never reach `on_key_event`. Forwarding the field editor's
-  commands (`deleteBackward:` and friends) from
-  `control:textView:doCommandBySelector:` to the typed key handler, honoring
-  `consume_key`, would make Backspace in an empty OTP cell move back.
-- **Accessibility**: number fields use the ARIA role `spinbutton`, which the
-  AppKit mapper leaves as the native text field.
+- AppKit text fields keep the bezel's own inset and ignore `padding_left`.
+- Number fields use the ARIA role `spinbutton`, which AppKit has no role for, so
+  VoiceOver reads them as text fields.
 
 ## Verification
 

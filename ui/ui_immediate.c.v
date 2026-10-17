@@ -1774,13 +1774,13 @@ fn page_focused_text_area(direction int) {
 			dropdown_state.height, 0xffffff, dropdown_state.radius)
 		draw_outline(ctx, dropdown_state.x, dropdown_state.y, dropdown_state.width,
 			dropdown_state.height, 0xb8c2cf, dropdown_state.radius)
-		list := intersect_rect(rect(dropdown_state.x + 1,
+		list_clip := intersect_rect(rect(dropdown_state.x + 1,
 			dropdown_state.y + dropdown_popup_padding, dropdown_state.width - 2,
 			dropdown_state.height - dropdown_popup_padding * 2), window)
-		if list.width <= 0 || list.height <= 0 {
+		if list_clip.width <= 0 || list_clip.height <= 0 {
 			return
 		}
-		apply_clip(ctx, list)
+		apply_clip(ctx, list_clip)
 		row_style := TextStyle{
 			...dropdown_state.text_style
 			align: .left
@@ -1788,7 +1788,7 @@ fn page_focused_text_area(direction int) {
 		for index, option in dropdown_state.options {
 			row_y := dropdown_state.y + dropdown_popup_padding + f64(index) * dropdown_state.row_height -
 				g_dropdown_scroll
-			if row_y + dropdown_state.row_height <= list.y || row_y >= list.y + list.height {
+			if row_y + dropdown_state.row_height <= list_clip.y || row_y >= list_clip.y + list_clip.height {
 				continue
 			}
 			if index == g_dropdown_hover {
@@ -1815,7 +1815,7 @@ fn page_focused_text_area(direction int) {
 				dropdown_option: true
 				option_index: index
 				options: dropdown_state.options
-			}, list)
+			}, list_clip)
 		}
 		draw_scrollbar(ctx, dropdown_state.x, dropdown_state.y, dropdown_state.width,
 			dropdown_state.height, f64(dropdown_state.options.len) * dropdown_state.row_height +

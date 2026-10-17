@@ -260,13 +260,6 @@ needs no id). Next/previous helpers skip disabled steps. The stepper has role
 Omitted: arbitrary child elements per step (title and description cover the
 documented examples) and `text_center` for vertical steppers.
 
-## Changes requested outside this group
-
-- AppKit accessibility mapping for `radio` (AXRadioButton), `radiogroup`
-  (AXRadioGroup) and `listitem`; until then they keep the native role.
-- A filled star in the symbol table (`star.fill`), which would let ratings use
-  one symbol on every backend.
-
 ## Attribution
 
 The rating click rule (`rating_value_after_click`) is adapted from
