@@ -116,6 +116,8 @@ mut:
 	scroll_ids          map[u64]string // NSClipView pointer -> Scroll element id
 	pointer_ids         map[u64]string // NSView pointer -> element id
 	hover_ids           map[u64]string // NSView pointer -> action of a hoverable element
+	rendering           bool // refresh is building or applying the tree
+	refresh_pending     bool // a refresh was asked for while one was rendering
 	image_symbols       map[u64]string // NSImageView pointer -> the symbol and tint it shows
 	hovered             []string       // hovered actions, outermost first
 	hover_window_point  macos.Point    // last pointer location, window coordinates
@@ -239,12 +241,26 @@ fn run_window_with_min_size(title string, width int, height int, min_width int, 
 }
 
 pub fn refresh() {
-	st := state()
+	mut st := state()
 	if native_is_nil(st.root_view) || voidptr(st.build_screen) == unsafe { nil } {
 		return
 	}
+	// Moving and resizing views posts notifications (a scroll view's bounds, for
+	// one) whose handlers may ask for a refresh. Rendering again inside a render
+	// tore the tree it was in the middle of updating, so such a request waits for
+	// the render to finish.
+	if st.rendering {
+		st.refresh_pending = true
+		return
+	}
+	st.rendering = true
 	root := st.build_screen()
 	render_root(root)
+	st.rendering = false
+	if st.refresh_pending {
+		st.refresh_pending = false
+		request_refresh()
+	}
 	schedule_screenshot_capture()
 }
 
@@ -2511,6 +2527,7 @@ fn native_update_checkbox(checkbox_view NativeView, el Element) {
 	macos.msg_void_i64(checkbox_view, 'setState:', if el.checked { i64(1) } else { i64(0) })
 	macos.msg_void_bool(checkbox_view, 'setAllowsMixedState:', false)
 	macos.msg_void1(checkbox_view, 'setFont:', native_font(el.text_style.size, el.text_style.bold, el.text_style.italic))
+	native_match_appearance(checkbox_view, el.box, el.text_style.color)
 }
 
 fn native_new_switch_control(el Element) NativeView {
@@ -2614,6 +2631,7 @@ fn native_update_dropdown(popup NativeView, el Element) {
 	macos.msg_void1(popup, 'setFont:', native_font(el.text_style.size, el.text_style.bold, el.text_style.italic))
 	macos.msg_void_bool(popup, 'setBordered:', box_draws_fill(el.box))
 	macos.msg_void_u64(popup, 'setBezelStyle:', 1)
+	native_match_appearance(popup, el.box, el.text_style.color)
 }
 
 fn native_new_text_field(el Element) NativeView {
@@ -2644,9 +2662,36 @@ fn native_update_text_field(field NativeView, frame NativeRect, placeholder stri
 	if draws_background {
 		macos.msg_void1(field, 'setBackgroundColor:', native_color(box.bg))
 	}
+	native_match_appearance(field, box, text_hex)
 	macos.msg_void_bool(field, 'setEditable:', !readonly && enabled)
 	macos.msg_void_bool(field, 'setSelectable:', true)
 	macos.msg_void_bool(field, 'setEnabled:', enabled)
+}
+
+// native_match_appearance gives a native control the light or dark system
+// appearance its declared colors call for, so its bezel, check box, placeholder
+// and insertion point suit a light or dark ui2 theme whatever the system's own
+// appearance is. A filled control goes by its fill, an unfilled one by its text:
+// light text on an unfilled field would otherwise sit on a light bezel.
+fn native_match_appearance(view NativeView, box BoxStyle, text_hex u32) {
+	dark := if box_draws_fill(box) {
+		!native_color_is_light(box.bg)
+	} else {
+		native_color_is_light(text_hex)
+	}
+	name := if dark { 'NSAppearanceNameDarkAqua' } else { 'NSAppearanceNameAqua' }
+	appearance := macos.msg_id1(macos.get_class('NSAppearance'), 'appearanceNamed:',
+		macos.nsstring(name))
+	macos.msg_void1(view, 'setAppearance:', appearance)
+}
+
+// native_color_is_light reports whether a 0xRRGGBB color's relative luminance
+// is above the middle.
+fn native_color_is_light(hex u32) bool {
+	r := f64((hex >> 16) & 0xff) / 255.0
+	g := f64((hex >> 8) & 0xff) / 255.0
+	b := f64(hex & 0xff) / 255.0
+	return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.5
 }
 
 // native_new_text_area builds an NSScrollView wrapping an NSTextView —
@@ -2655,6 +2700,7 @@ fn native_new_text_area(el Element) NativeView {
 	frame := element_rect(el.frame)
 	if el.disable_scroll {
 		tv := native_new_text_view(appkit_rect(frame), el)
+		native_match_appearance(tv, el.box, el.text_style.color)
 		return tv
 	}
 	scroll_view := macos.msg_id_rect(macos.alloc('NSScrollView'), 'initWithFrame:', appkit_rect(frame))
@@ -2665,6 +2711,7 @@ fn native_new_text_area(el Element) NativeView {
 	macos.msg_void1(scroll_view, 'setDocumentView:', tv)
 	macos.release(tv)
 	native_set_corner_radius(scroll_view, el.box.radius)
+	native_match_appearance(scroll_view, el.box, el.text_style.color)
 	return scroll_view
 }
 
@@ -2710,6 +2757,7 @@ fn native_update_text_area(native NativeView, el Element, declared_text_changed 
 	if box_draws_fill(el.box) {
 		macos.msg_void1(tv, 'setBackgroundColor:', native_color(el.box.bg))
 	}
+	native_match_appearance(native, el.box, el.text_style.color)
 	current := macos.utf8_string(macos.msg_id(tv, 'string'))
 	replace_text := declared_text_changed && current != el.text
 	if replace_text || content_changed {

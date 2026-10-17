@@ -174,6 +174,9 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 	__global g_scroll_offsets = map[string]f64{}
 	__global g_scroll_content_h = map[string]f64{}
 	__global g_hit_targets = []HitTarget{}
+	// The modifier keys of the last event sokol delivered, for key_modifiers on
+	// platforms with no other way to ask.
+	__global g_key_modifiers = KeyModifiers{}
 
 	// HoverRegion is the visible part of an element drawn this frame and the
 	// hoverable elements it belongs to, from the outermost in. The last region
@@ -755,6 +758,12 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 	}
 
 	fn on_event(e &gg.Event, _ &GgApp) {
+		g_key_modifiers = KeyModifiers{
+			shift: e.modifiers & u32(gg.Modifier.shift) != 0
+			ctrl: e.modifiers & u32(gg.Modifier.ctrl) != 0
+			alt: e.modifiers & u32(gg.Modifier.alt) != 0
+			cmd: e.modifiers & u32(gg.Modifier.super) != 0
+		}
 		match e.typ {
 			.mouse_down {
 				g_tooltip.dismiss()
@@ -2245,7 +2254,9 @@ fn page_focused_text_area(direction int) {
 				x := el.frame.x + off_x
 				y := el.frame.y + off_y
 				frame := rect(x, y, el.frame.width, el.frame.height)
-				draw_rect(ctx, x, y, el.frame.width, el.frame.height, el.box.bg, 0)
+				if box_draws_fill(el.box) {
+					draw_rect(ctx, x, y, el.frame.width, el.frame.height, el.box.bg, 0)
+				}
 				draw_box_borders(ctx, x, y, el.frame.width, el.frame.height, el.box)
 				// An axis the mode leaves out has no content to cover, and so no range.
 				scrolls_x := el.scroll_mode != .vertical_only
@@ -3062,18 +3073,40 @@ fn page_focused_text_area(direction int) {
 		line := gradient_line(gradient.angle, w, h)
 		r := math.max(0, math.min(radius, math.min(w, h) / 2))
 		scale := f64(ctx.scale)
+		if r < 0.5 && draw_square_gradient(ctx, x, y, w, h, line, stops, gradient.angle, opacity) {
+			return
+		}
 		// About 16 cells each way, whatever the size, keeps a gradient to a few
-		// thousand vertices of sokol-gl's 65536 a frame.
+		// thousand vertices of sokol-gl's 65536 a frame. Across the rounded corners
+		// the rows are spaced by equal angles on the arc, as fill_rounded_rect places
+		// its points, so they bunch up where the edge turns fastest.
 		cell_w := math.max(4.0, w / 16)
 		cell_h := math.max(4.0, (h - 2 * r) / 16)
-		corner_step := math.max(1.0, r / 8)
+		arc_rows := int(math.min(math.max(math.sqrt(r * scale) * 1.5, 2), 16))
+		mut rows := [0.0]
+		if r > 0 {
+			for k in 1 .. arc_rows + 1 {
+				rows << r - r * math.cos(math.pi / 2 * f64(k) / f64(arc_rows))
+			}
+		}
+		for rows[rows.len - 1] + cell_h < h - r {
+			rows << rows[rows.len - 1] + cell_h
+		}
+		if r > 0 {
+			for k in 0 .. arc_rows + 1 {
+				rows << h - r + r * math.sin(math.pi / 2 * f64(k) / f64(arc_rows))
+			}
+		} else {
+			rows << h
+		}
 		sgl.load_pipeline(ctx.pipeline.alpha)
 		sgl.begin_quads()
-		mut top := 0.0
-		for top < h {
-			// Rows are short across the rounded corners, where the edge curves.
-			step := if top < r || top + cell_h > h - r { corner_step } else { cell_h }
-			bottom := math.min(top + step, h)
+		for i in 1 .. rows.len {
+			top := rows[i - 1]
+			bottom := math.min(rows[i], h)
+			if bottom <= top {
+				continue
+			}
 			inset_top := rounded_inset(top, h, r)
 			inset_bottom := rounded_inset(bottom, h, r)
 			columns := int(math.ceil(w / cell_w))
@@ -3089,9 +3122,60 @@ fn page_focused_text_area(direction int) {
 				gradient_vertex(line, stops, opacity, x, y, xb1, bottom, scale)
 				gradient_vertex(line, stops, opacity, x, y, xb0, bottom, scale)
 			}
-			top = bottom
 		}
 		sgl.end()
+	}
+
+	// draw_square_gradient draws the exact gradient of a square-cornered box from a
+	// handful of quads: one for two stops, whose color is linear across the whole
+	// box, or one per stop for a horizontal or vertical gradient. It leaves other
+	// gradients to the mesh and reports whether it drew.
+	fn draw_square_gradient(ctx &gg.Context, x f64, y f64, w f64, h f64, line GradientLine, stops []GradientStop, angle f64, opacity f64) bool {
+		scale := f64(ctx.scale)
+		if stops.len == 2 {
+			sgl.load_pipeline(ctx.pipeline.alpha)
+			sgl.begin_quads()
+			gradient_vertex(line, stops, opacity, x, y, 0, 0, scale)
+			gradient_vertex(line, stops, opacity, x, y, w, 0, scale)
+			gradient_vertex(line, stops, opacity, x, y, w, h, scale)
+			gradient_vertex(line, stops, opacity, x, y, 0, h, scale)
+			sgl.end()
+			return true
+		}
+		turn := math.fmod(math.fmod(angle, 360) + 360, 360)
+		if turn !in [0.0, 90.0, 180.0, 270.0] {
+			return false
+		}
+		horizontal := turn == 0 || turn == 180
+		extent := if horizontal { w } else { h }
+		mut cuts := [0.0, 1.0]
+		for stop in stops {
+			cuts << stop.position
+		}
+		cuts.sort()
+		sgl.load_pipeline(ctx.pipeline.alpha)
+		sgl.begin_quads()
+		for i in 1 .. cuts.len {
+			// Positions run along the gradient, which may point back along the axis.
+			a := if turn == 180 || turn == 270 { 1 - cuts[i] } else { cuts[i - 1] }
+			b := if turn == 180 || turn == 270 { 1 - cuts[i - 1] } else { cuts[i] }
+			if b - a <= 0 {
+				continue
+			}
+			if horizontal {
+				gradient_vertex(line, stops, opacity, x, y, a * extent, 0, scale)
+				gradient_vertex(line, stops, opacity, x, y, b * extent, 0, scale)
+				gradient_vertex(line, stops, opacity, x, y, b * extent, h, scale)
+				gradient_vertex(line, stops, opacity, x, y, a * extent, h, scale)
+			} else {
+				gradient_vertex(line, stops, opacity, x, y, 0, a * extent, scale)
+				gradient_vertex(line, stops, opacity, x, y, w, a * extent, scale)
+				gradient_vertex(line, stops, opacity, x, y, w, b * extent, scale)
+				gradient_vertex(line, stops, opacity, x, y, 0, b * extent, scale)
+			}
+		}
+		sgl.end()
+		return true
 	}
 
 	fn gradient_vertex(line GradientLine, stops []GradientStop, opacity f64, ox f64, oy f64, lx f64, ly f64, scale f64) {

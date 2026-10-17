@@ -114,7 +114,9 @@ fn native_color_from_hex(hex u32) macos.Id {
 	r := f64((hex >> 16) & 0xff) / 255.0
 	g := f64((hex >> 8) & 0xff) / 255.0
 	b := f64(hex & 0xff) / 255.0
-	color := macos.msg_id_four_f64(macos.get_class('NSColor'), 'colorWithCalibratedRed:green:blue:alpha:', r, g, b, 1.0)
+	// Hex colors are sRGB, as in CSS and design tools and in the custom renderer.
+	// Calibrated (Generic RGB) components drew #EF4444 as about #E3675C.
+	color := macos.msg_id_four_f64(macos.get_class('NSColor'), 'colorWithSRGBRed:green:blue:alpha:', r, g, b, 1.0)
 	if !objc_is_nil(color) {
 		helpers.colors[hex] = macos.retain(color)
 	}

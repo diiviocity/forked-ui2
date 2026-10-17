@@ -64,6 +64,9 @@ __global g_event_handler = EventFn(unsafe { nil })
 __global g_window = View(unsafe { nil })
 __global g_root_vc = View(unsafe { nil })
 __global g_root_view = View(unsafe { nil })
+// A refresh asked for while one renders waits for it, as on AppKit.
+__global g_ios_rendering = false
+__global g_ios_refresh_pending = false
 __global g_button_handler = View(unsafe { nil })
 __global g_long_press_handler = View(unsafe { nil })
 __global g_swipe_handler = View(unsafe { nil })
@@ -124,8 +127,18 @@ pub fn refresh() {
 	if g_root_view == unsafe { nil } || voidptr(g_build_screen) == unsafe { nil } {
 		return
 	}
+	if g_ios_rendering {
+		g_ios_refresh_pending = true
+		return
+	}
+	g_ios_rendering = true
 	root := g_build_screen()
 	render_root(root)
+	g_ios_rendering = false
+	if g_ios_refresh_pending {
+		g_ios_refresh_pending = false
+		request_refresh()
+	}
 }
 
 // request_refresh schedules a declarative rebuild on UIKit's main thread.
