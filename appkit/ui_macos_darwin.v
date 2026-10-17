@@ -14,6 +14,8 @@ import time
 
 #flag darwin -framework QuartzCore
 
+#flag darwin -framework CoreGraphics
+
 #include "@VMODROOT/appkit/ui_macos_geometry_darwin.h"
 
 struct C.ui2_macos_rect {
@@ -26,6 +28,14 @@ struct C.ui2_macos_rect {
 fn C.ui2_macos_msg_rect_rect(obj voidptr, sel voidptr, rect C.ui2_macos_rect) C.ui2_macos_rect
 
 fn C.ui2_macos_msg_super_void_id(obj voidptr, superclass voidptr, sel voidptr, arg voidptr)
+
+fn C.ui2_macos_msg_id_point(obj voidptr, sel voidptr, x f64, y f64) voidptr
+
+fn C.ui2_macos_add_tracking_area(view voidptr)
+
+fn C.ui2_macos_msg_void_float(obj voidptr, sel voidptr, value f32)
+
+fn C.ui2_macos_set_shadow_path(layer voidptr, x f64, y f64, width f64, height f64, radius f64)
 
 const ns_window_style_titled = u64(1)
 const ns_window_style_closable = u64(2)
@@ -105,6 +115,12 @@ mut:
 	textview_action_ids map[u64]string // NSTextView pointer -> change event id
 	scroll_ids          map[u64]string // NSClipView pointer -> Scroll element id
 	pointer_ids         map[u64]string // NSView pointer -> element id
+	hover_ids           map[u64]string // NSView pointer -> action of a hoverable element
+	image_symbols       map[u64]string // NSImageView pointer -> the symbol and tint it shows
+	hovered             []string       // hovered actions, outermost first
+	hover_window_point  macos.Point    // last pointer location, window coordinates
+	hover_root_point    macos.Point    // the same in the root view's coordinates
+	hover_inside        bool
 	pointer_clickable   map[u64]bool
 	pointer_buttons     map[u64]bool
 	pointer_draggable   map[u64]bool
@@ -889,6 +905,10 @@ fn ensure_runtime_classes() {
 	if macos.get_class('UI2FlippedView') == unsafe { nil } {
 		cls := macos.allocate_class_pair(macos.get_class('NSView'), 'UI2FlippedView')
 		macos.add_method(cls, 'isFlipped', voidptr(ui2_view_is_flipped), 'B@:')
+		// Only the root view carries a tracking area, so only it receives these.
+		macos.add_method(cls, 'mouseEntered:', voidptr(ui2_root_mouse_moved), 'v@:@')
+		macos.add_method(cls, 'mouseMoved:', voidptr(ui2_root_mouse_moved), 'v@:@')
+		macos.add_method(cls, 'mouseExited:', voidptr(ui2_root_mouse_exited), 'v@:@')
 		macos.add_method(cls, 'draggingEntered:', voidptr(ui2_dragging_entered), 'Q@:@')
 		macos.add_method(cls, 'performDragOperation:', voidptr(ui2_perform_drag_operation), 'B@:@')
 		macos.register_class_pair(cls)
@@ -987,6 +1007,7 @@ fn render_root(declared Element) {
 	st.view_kinds = map[string]Kind{}
 	st.text_area_direct = map[string]bool{}
 	st.pointer_ids = map[u64]string{}
+	st.hover_ids = map[u64]string{}
 	st.pointer_clickable = map[u64]bool{}
 	st.pointer_buttons = map[u64]bool{}
 	st.pointer_draggable = map[u64]bool{}
@@ -1006,6 +1027,8 @@ fn render_root(declared Element) {
 	mut active := map[string]bool{}
 	render_children(st.root_view, root.children, '', mut active)
 	remove_stale_nodes(active)
+	// Content can move under a pointer that stays put.
+	native_update_hover()
 }
 
 fn render_children(parent NativeView, children []Element, parent_key string, mut active map[string]bool) {
@@ -1142,6 +1165,7 @@ fn render_element(parent NativeView, el Element, key string, mut active map[stri
 		}
 	}
 	if el.kind != .screen {
+		register_hover(native, el)
 		border_box := if el.kind == .toggle_button && el.checked {
 			el.toggle_down_box
 		} else {
@@ -1350,7 +1374,7 @@ fn native_create_element(el Element) NativeView {
 			native_new_label(element_rect(el.frame), el.text, el.text_style.color, el.text_style.size, el.text_style.font_family, el.text_style.bold, el.text_style.italic, el.text_style.underline, align_value(el.text_style.align), el.text_style.lines, el.text_style.valign, label_needs_container(el))
 		}
 		.image {
-			native_new_image(element_rect(el.frame), el.image_path, el.rotation)
+			native_new_image(element_rect(el.frame), el.image_path, el.rotation, el.text_style.color)
 		}
 		.button {
 			native_new_button(element_rect(el.frame), el.text, el.box, el.text_style.color, el.text_style.size, el.text_style.bold, el.text_style.italic, el.text_style.underline, el.text_style.lines, el.image_path, el.native_style)
@@ -1385,7 +1409,7 @@ fn native_update_element(native NativeView, el Element, declared_text_changed bo
 		.view {
 			native_set_frame(native, element_rect(el.frame))
 			native_set_box_background(native, el.box)
-			native_set_corner_radius(native, el.box.radius)
+			native_set_box_corners(native, el.box)
 		}
 		.scroll {
 			native_set_frame(native, element_rect(el.frame))
@@ -1397,7 +1421,8 @@ fn native_update_element(native NativeView, el Element, declared_text_changed bo
 			native_update_label(native, element_rect(el.frame), el.text, el.text_style.color, el.text_style.size, el.text_style.font_family, el.text_style.bold, el.text_style.italic, el.text_style.underline, align_value(el.text_style.align), el.text_style.lines, el.text_style.valign, label_needs_container(el))
 		}
 		.image {
-			native_update_image(native, element_rect(el.frame), el.image_path, el.rotation)
+			native_update_image(native, element_rect(el.frame), el.image_path, el.rotation,
+				el.text_style.color)
 		}
 		.button {
 			native_update_button(native, element_rect(el.frame), el.text, el.box, el.text_style.color, el.text_style.size, el.text_style.bold, el.text_style.italic, el.text_style.underline, el.text_style.lines, el.image_path, el.native_style)
@@ -1417,7 +1442,7 @@ fn native_update_element(native NativeView, el Element, declared_text_changed bo
 		.text_field {
 			native_update_text_field(native, element_rect(el.frame), el.placeholder, el.text,
 				el.box, el.text_style.color, el.text_style.size,
-				declared_text_changed, el.readonly, el.enabled)
+				declared_text_changed, el.readonly, el.enabled, el.text_style.align)
 		}
 		.text_area {
 			native_update_text_area(native, el, declared_text_changed, content_changed)
@@ -1453,6 +1478,85 @@ fn register_pointer(native NativeView, el Element) {
 	}
 	if element_interactive(el) {
 		native_invalidate_cursor_rects(native)
+	}
+}
+
+fn register_hover(native NativeView, el Element) {
+	if el.hoverable && !el.hidden && element_action_id(el).len > 0 {
+		mut st := state()
+		st.hover_ids[u64(voidptr(native))] = element_action_id(el)
+	}
+}
+
+@[export: 'ui2_root_mouse_moved']
+fn ui2_root_mouse_moved(self voidptr, _cmd voidptr, event voidptr) {
+	mut st := state()
+	if NativeView(self) != st.root_view {
+		return
+	}
+	st.hover_window_point = macos.msg_point(event, 'locationInWindow')
+	st.hover_root_point = native_event_point(st.root_view, event)
+	st.hover_inside = true
+	native_update_hover()
+}
+
+@[export: 'ui2_root_mouse_exited']
+fn ui2_root_mouse_exited(self voidptr, _cmd voidptr, event voidptr) {
+	mut st := state()
+	if NativeView(self) != st.root_view {
+		return
+	}
+	st.hover_root_point = native_event_point(st.root_view, event)
+	st.hover_inside = false
+	native_update_hover()
+}
+
+// native_hovered_chain returns the hoverable elements at a window point, outermost
+// first: the topmost view there and its superviews, as CSS :hover counts them.
+// hitTest: skips hidden views and the parts of a scroll view's content clipped away.
+fn native_hovered_chain(window_point macos.Point) []string {
+	st := state()
+	if st.hover_ids.len == 0 || native_is_nil(st.root_view) {
+		return []string{}
+	}
+	// hitTest: takes a point in the receiver's superview, which for the window's
+	// content view shares the window's coordinates.
+	superview := macos.msg_id(st.root_view, 'superview')
+	point := if objc_is_nil(superview) {
+		window_point
+	} else {
+		macos.msg_point_point_id(superview, 'convertPoint:fromView:', window_point, objc_nil())
+	}
+	mut hit_view := NativeView(C.ui2_macos_msg_id_point(st.root_view, macos.sel('hitTest:'), point.x,
+		point.y))
+	mut inner_first := []string{}
+	for !native_is_nil(hit_view) {
+		if action := st.hover_ids[u64(voidptr(hit_view))] {
+			inner_first << action
+		}
+		if hit_view == st.root_view {
+			break
+		}
+		hit_view = NativeView(macos.msg_id(hit_view, 'superview'))
+	}
+	return inner_first.reverse()
+}
+
+fn native_update_hover() {
+	mut st := state()
+	current := if st.hover_inside { native_hovered_chain(st.hover_window_point) } else { []string{} }
+	left, entered := hover_transitions(st.hovered, current)
+	st.hovered = current
+	if voidptr(st.event_handler) == unsafe { nil } {
+		return
+	}
+	handler := st.event_handler
+	point := st.hover_root_point
+	for action in left {
+		handler('pointer:leave:${action}:${point.x}:${point.y}')
+	}
+	for action in entered {
+		handler('pointer:enter:${action}:${point.x}:${point.y}')
 	}
 }
 
@@ -1569,6 +1673,7 @@ fn unregister_node(key string, native NativeView, kind Kind, text_direct bool) {
 		st.pointer_button_id = ''
 	}
 	st.pointer_ids.delete(pointer)
+	st.image_symbols.delete(pointer)
 	st.pointer_clickable.delete(pointer)
 	st.pointer_buttons.delete(pointer)
 	st.pointer_draggable.delete(pointer)
@@ -1968,7 +2073,7 @@ fn native_new_view(frame NativeRect, box BoxStyle, interactive bool) NativeView 
 	}
 	native := macos.msg_id_rect(macos.alloc(class_name), 'initWithFrame:', appkit_rect(frame))
 	native_set_box_background(native, box)
-	native_set_corner_radius(native, box.radius)
+	native_set_box_corners(native, box)
 	return native
 }
 
@@ -2004,13 +2109,16 @@ fn native_set_scroll_background(scroll NativeView, box BoxStyle) {
 	}
 }
 
-fn native_new_image(frame NativeRect, path string, rotation f64) NativeView {
+fn native_new_image(frame NativeRect, path string, rotation f64, tint u32) NativeView {
 	image_view := macos.msg_id_rect(macos.alloc('UI2PointerImageView'), 'initWithFrame:', appkit_rect(frame))
-	native_update_image(image_view, frame, path, rotation)
+	native_update_image(image_view, frame, path, rotation, tint)
 	return image_view
 }
 
-fn native_update_image(image_view NativeView, frame NativeRect, path string, rotation f64) {
+// A `symbol:` path draws that SF Symbol, scaled to the frame and tinted with the
+// element's text color the way the other backends tint its glyph; a file image
+// keeps its own colors.
+fn native_update_image(image_view NativeView, frame NativeRect, path string, rotation f64, tint u32) {
 	rotated := rotation < -0.001 || rotation > 0.001
 	native_view_reset_transform(image_view)
 	native_set_frame(image_view, frame)
@@ -2023,6 +2131,27 @@ fn native_update_image(image_view NativeView, frame NativeRect, path string, rot
 	if path.trim_space() == '' {
 		macos.msg_void1(image_view, 'setImage:', macos.Id(unsafe { nil }))
 		return
+	}
+	tints := macos.responds_to(image_view, 'setContentTintColor:')
+	mut st := state()
+	pointer := u64(voidptr(image_view))
+	if path.starts_with('symbol:') {
+		// Looking a symbol up and tinting it again on every refresh cost half the
+		// main thread while an animation kept the window refreshing.
+		symbol_sig := '${path}:${tint}'
+		if (st.image_symbols[pointer] or { '' }) == symbol_sig {
+			return
+		}
+		st.image_symbols[pointer] = symbol_sig
+		macos.msg_void1(image_view, 'setImage:', native_image_from_name(path))
+		if tints {
+			macos.msg_void1(image_view, 'setContentTintColor:', native_color(tint))
+		}
+		return
+	}
+	st.image_symbols.delete(pointer)
+	if tints {
+		macos.msg_void1(image_view, 'setContentTintColor:', macos.Id(unsafe { nil }))
 	}
 	img := macos.msg_id1(macos.alloc('NSImage'), 'initWithContentsOfFile:', macos.nsstring(path))
 	macos.msg_void1(image_view, 'setImage:', img)
@@ -2180,11 +2309,11 @@ fn native_label_content_height(label_view NativeView, frame NativeRect, lines in
 	if native_is_nil(font) {
 		return 0
 	}
-	text := macos.utf8_string(macos.msg_id(label_view, 'stringValue'))
-	if text.len == 0 {
+	label_text := macos.utf8_string(macos.msg_id(label_view, 'stringValue'))
+	if label_text.len == 0 {
 		return 0
 	}
-	if !text.is_ascii() {
+	if !label_text.is_ascii() {
 		return native_single_line_height(label_view)
 	}
 	key := '${macos.utf8_string(macos.msg_id(font, 'fontName'))}:${macos.msg_f64(font, 'pointSize')}'
@@ -2362,7 +2491,7 @@ fn native_update_button(button_view NativeView, frame NativeRect, title string, 
 		native_button_set_attributed_title(button_view, title, text_hex, size, bold, italic, underline,
 			lines)
 		native_set_box_background(button_view, box)
-		native_set_corner_radius(button_view, box.radius)
+		native_set_box_corners(button_view, box)
 	}
 	native_apply_line_limit(button_view, lines)
 	native_update_button_image(button_view, frame, image_name)
@@ -2492,11 +2621,11 @@ fn native_new_text_field(el Element) NativeView {
 	cls := if el.secure { 'NSSecureTextField' } else { 'NSTextField' }
 	field := macos.msg_id_rect(macos.alloc(cls), 'initWithFrame:', appkit_rect(frame))
 	native_update_text_field(field, frame, el.placeholder, el.text, el.box, el.text_style.color,
-		el.text_style.size, true, el.readonly, el.enabled)
+		el.text_style.size, true, el.readonly, el.enabled, el.text_style.align)
 	return field
 }
 
-fn native_update_text_field(field NativeView, frame NativeRect, placeholder string, text string, box BoxStyle, text_hex u32, size f64, declared_text_changed bool, readonly bool, enabled bool) {
+fn native_update_text_field(field NativeView, frame NativeRect, placeholder string, text string, box BoxStyle, text_hex u32, size f64, declared_text_changed bool, readonly bool, enabled bool, align Align) {
 	native_set_frame(field, frame)
 	// Unrelated refreshes preserve native edits. A changed declaration remains
 	// controlled and is applied explicitly.
@@ -2506,6 +2635,7 @@ fn native_update_text_field(field NativeView, frame NativeRect, placeholder stri
 	macos.msg_void1(field, 'setPlaceholderString:', macos.nsstring(placeholder))
 	macos.msg_void1(field, 'setTextColor:', native_color(text_hex))
 	macos.msg_void1(field, 'setFont:', native_font(size, false, false))
+	macos.msg_void_i64(field, 'setAlignment:', native_text_alignment(align_value(align)))
 	macos.msg_void_bool(field, 'setBordered:', true)
 	macos.msg_void_bool(field, 'setBezeled:', true)
 	macos.msg_void_u64(field, 'setBezelStyle:', 1)
@@ -2700,14 +2830,123 @@ fn native_set_background(view NativeView, hex u32) {
 	macos.msg_void1(layer, 'setBackgroundColor:', macos.msg_id(native_color(hex), 'CGColor'))
 }
 
+// native_set_box_background paints what a BoxStyle puts beneath its borders: the
+// solid fill at its opacity or a CAGradientLayer, and the drop shadow.
 fn native_set_box_background(view NativeView, box BoxStyle) {
-	if box_draws_fill(box) {
-		native_set_background(view, box.bg)
-		return
-	}
 	macos.msg_void_bool(view, 'setWantsLayer:', true)
 	layer := macos.msg_id(view, 'layer')
-	macos.msg_void1(layer, 'setBackgroundColor:', macos.Id(unsafe { nil }))
+	transaction := macos.Id(macos.get_class('CATransaction'))
+	macos.msg_void(transaction, 'begin')
+	macos.msg_void_bool(transaction, 'setDisableActions:', true)
+	opacity := box_fill_opacity(box)
+	// A control draws its title in its own layer, beneath any sublayer, so only
+	// views take a gradient; a button keeps its solid fill.
+	gradient := box_has_gradient(box)
+		&& !macos.msg_bool_id(view, 'isKindOfClass:', macos.get_class('NSControl'))
+	if gradient {
+		macos.msg_void1(layer, 'setBackgroundColor:', macos.Id(unsafe { nil }))
+		native_set_gradient_layer(view, layer, box, opacity)
+	} else {
+		native_hide_gradient_layer(view)
+		fill := if opacity <= 0 {
+			macos.Id(unsafe { nil })
+		} else if opacity < 1 {
+			macos.msg_id(macos.msg_id_f64(native_color(box.bg), 'colorWithAlphaComponent:',
+				opacity), 'CGColor')
+		} else {
+			macos.msg_id(native_color(box.bg), 'CGColor')
+		}
+		macos.msg_void1(layer, 'setBackgroundColor:', fill)
+	}
+	native_set_layer_shadow(view, layer, box)
+	macos.msg_void(transaction, 'commit')
+}
+
+fn native_gradient_key() voidptr {
+	return voidptr(macos.sel('ui2_gradient_assoc'))
+}
+
+// The gradient is a sublayer kept behind the subviews' layers and the borders by
+// its z position, sized to the view and rounded like it, since a shadowed box
+// cannot clip its sublayers.
+fn native_set_gradient_layer(view NativeView, layer macos.Id, box BoxStyle, opacity f64) {
+	mut gradient := NativeView(macos.get_associated_object(view, native_gradient_key()))
+	if native_is_nil(gradient) {
+		gradient = macos.msg_id(macos.alloc('CAGradientLayer'), 'init')
+		macos.msg_void_f64(gradient, 'setZPosition:', -1000)
+		native_set_associated_object(view, native_gradient_key(), gradient)
+		macos.release(gradient)
+	}
+	if macos.msg_id(gradient, 'superlayer') != layer {
+		macos.msg_void1(layer, 'addSublayer:', gradient)
+	}
+	layer_bounds := macos.msg_rect(view, 'bounds')
+	macos.msg_void_rect(gradient, 'setFrame:', layer_bounds)
+	macos.msg_void_f64(gradient, 'setCornerRadius:', box.radius)
+	stops := gradient_sorted_stops(box.gradient)
+	colors := macos.msg_id(macos.alloc('NSMutableArray'), 'init')
+	locations := macos.msg_id(macos.alloc('NSMutableArray'), 'init')
+	for stop in stops {
+		color := macos.msg_id_f64(native_color(stop.color), 'colorWithAlphaComponent:', stop.opacity * opacity)
+		macos.msg_void1(colors, 'addObject:', macos.msg_id(color, 'CGColor'))
+		macos.msg_void1(locations, 'addObject:', macos.msg_id_f64(macos.get_class('NSNumber'),
+			'numberWithDouble:', stop.position))
+	}
+	macos.msg_void1(gradient, 'setColors:', colors)
+	macos.msg_void1(gradient, 'setLocations:', locations)
+	macos.release(colors)
+	macos.release(locations)
+	// The gradient runs along a line in the box's top-left based points; the layer
+	// takes its ends as fractions of its bounds, with y up unless the view flips it.
+	line := gradient_line(box.gradient.angle, layer_bounds.width, layer_bounds.height)
+	w := if layer_bounds.width > 0 { layer_bounds.width } else { 1.0 }
+	h := if layer_bounds.height > 0 { layer_bounds.height } else { 1.0 }
+	flipped := macos.msg_bool(view, 'isFlipped')
+	y0 := if flipped { line.y0 / h } else { 1 - line.y0 / h }
+	y1 := if flipped { line.y1 / h } else { 1 - line.y1 / h }
+	macos.msg_void_point(gradient, 'setStartPoint:', macos.point(line.x0 / w, y0))
+	macos.msg_void_point(gradient, 'setEndPoint:', macos.point(line.x1 / w, y1))
+	macos.msg_void_bool(gradient, 'setHidden:', false)
+}
+
+fn native_hide_gradient_layer(view NativeView) {
+	gradient := NativeView(macos.get_associated_object(view, native_gradient_key()))
+	if !native_is_nil(gradient) {
+		macos.msg_void_bool(gradient, 'setHidden:', true)
+	}
+}
+
+// A layer-backed view owns its layer's shadow through its NSShadow and resets the
+// layer's shadow opacity whenever it has none, so the shadow is given to the view.
+// The rounded shadow path then lets CoreAnimation draw it from the box's shape
+// rather than from its rendered content, which a transparent box does not have.
+fn native_set_layer_shadow(view NativeView, layer macos.Id, box BoxStyle) {
+	if !box_has_shadow(box) {
+		if !objc_is_nil(macos.msg_id(view, 'shadow')) {
+			macos.msg_void1(view, 'setShadow:', objc_nil())
+		}
+		return
+	}
+	shadow := box.shadow
+	ns_shadow := macos.msg_id(macos.alloc('NSShadow'), 'init')
+	macos.msg_void1(ns_shadow, 'setShadowColor:', macos.msg_id_f64(native_color(shadow.color),
+		'colorWithAlphaComponent:', unit_clamp(shadow.opacity)))
+	// AppKit hands the blur radius to CoreAnimation, whose radius is the blur's
+	// standard deviation: about half the CSS-style blur the box declares.
+	macos.msg_void_f64(ns_shadow, 'setShadowBlurRadius:', if shadow.blur > 0 { shadow.blur / 2 } else { 0.0 })
+	// NSShadow measures its offset upward, whatever the view's flipping.
+	macos.msg_void_point(ns_shadow, 'setShadowOffset:', macos.point(shadow.x, -shadow.y))
+	macos.msg_void1(view, 'setShadow:', ns_shadow)
+	macos.release(ns_shadow)
+	layer_bounds := macos.msg_rect(view, 'bounds')
+	C.ui2_macos_set_shadow_path(layer, -shadow.spread, -shadow.spread, layer_bounds.width + 2 * shadow.spread,
+		layer_bounds.height + 2 * shadow.spread, box.radius + shadow.spread)
+}
+
+// A rounded box clips its subviews to its corners, except when it casts a shadow:
+// a layer that masks to its bounds masks its own shadow away too.
+fn native_box_clips(box BoxStyle) bool {
+	return box.radius > 0 && !box_has_shadow(box)
 }
 
 fn native_set_corner_radius(view NativeView, radius f64) {
@@ -2715,6 +2954,13 @@ fn native_set_corner_radius(view NativeView, radius f64) {
 	layer := macos.msg_id(view, 'layer')
 	macos.msg_void_f64(layer, 'setCornerRadius:', radius)
 	macos.msg_void_bool(layer, 'setMasksToBounds:', radius > 0)
+}
+
+fn native_set_box_corners(view NativeView, box BoxStyle) {
+	macos.msg_void_bool(view, 'setWantsLayer:', true)
+	layer := macos.msg_id(view, 'layer')
+	macos.msg_void_f64(layer, 'setCornerRadius:', box.radius)
+	macos.msg_void_bool(layer, 'setMasksToBounds:', native_box_clips(box))
 }
 
 fn native_set_border_layer(view NativeView, side string, frame NativeRect, color u32, visible bool) {
@@ -2748,18 +2994,30 @@ fn native_set_box_borders(view NativeView, box BoxStyle) {
 	top := box_border_width(box.border_top, view_bounds.height)
 	right := box_border_width(box.border_right, view_bounds.width)
 	bottom := box_border_width(box.border_bottom, view_bounds.height)
-	if left <= 0 && top <= 0 && right <= 0 && bottom <= 0 {
+	rounded := box_rounded_border(box)
+	if (left <= 0 && top <= 0 && right <= 0 && bottom <= 0) || rounded > 0 {
 		for side in ['left', 'top', 'right', 'bottom'] {
 			native_set_border_layer(view, side, NativeRect{}, box.border_color, false)
 		}
+	}
+	if left <= 0 && top <= 0 && right <= 0 && bottom <= 0 {
+		macos.msg_void_f64(macos.msg_id(view, 'layer'), 'setBorderWidth:', 0)
 		return
 	}
 	macos.msg_void_bool(view, 'setWantsLayer:', true)
+	layer := macos.msg_id(view, 'layer')
 	if box.radius > 0 {
-		layer := macos.msg_id(view, 'layer')
 		macos.msg_void_f64(layer, 'setCornerRadius:', box.radius)
-		macos.msg_void_bool(layer, 'setMasksToBounds:', true)
+		macos.msg_void_bool(layer, 'setMasksToBounds:', native_box_clips(box))
 	}
+	// An even border on a rounded box is the layer's own, which follows the
+	// corners; straight side layers would leave them bare.
+	if rounded > 0 {
+		macos.msg_void_f64(layer, 'setBorderWidth:', rounded)
+		macos.msg_void1(layer, 'setBorderColor:', macos.msg_id(native_color(box.border_color), 'CGColor'))
+		return
+	}
+	macos.msg_void_f64(layer, 'setBorderWidth:', 0)
 	transaction := macos.Id(macos.get_class('CATransaction'))
 	macos.msg_void(transaction, 'begin')
 	macos.msg_void_bool(transaction, 'setDisableActions:', true)
@@ -2816,6 +3074,7 @@ fn ui2_app_did_finish_launching(_self voidptr, _cmd voidptr, _notification voidp
 	st.root_view = native_new_flipped_view(root_frame, BoxStyle{
 		bg: 0xffffff
 	})
+	C.ui2_macos_add_tracking_area(st.root_view)
 	native_register_drop_types(st.root_view)
 	native_set_content_view(st.window, st.root_view)
 	macos.release(st.root_view)
@@ -2992,12 +3251,32 @@ fn ui2_control_text_changed(_self voidptr, _cmd voidptr, notification voidptr) {
 @[export: 'ui2_control_do_command']
 fn ui2_control_do_command(_self voidptr, _cmd voidptr, control voidptr, _text_view voidptr, command voidptr) bool {
 	mut st := state()
-	if voidptr(st.key_handler) == unsafe { nil }
-		|| u64(control) !in st.control_change_ids {
+	if u64(control) !in st.control_change_ids {
 		return false
 	}
-	key := text_command_key(command, native_current_event_modifier_flags()) or { return false }
-	if key != 'tab' && key != 'shift+tab' {
+	modifiers := native_current_event_modifier_flags()
+	key := text_command_key(command, modifiers) or { return false }
+	// The field editor turns Backspace and Delete into commands before any key
+	// handler sees them, so on_key_event is offered the key here, and a handler
+	// that consumes it (moving back from an empty code cell, say) keeps the field
+	// from acting on it.
+	if key in ['backspace', 'forward_delete'] {
+		if voidptr(st.key_event_handler) == unsafe { nil } {
+			return false
+		}
+		st.key_consumed = false
+		st.key_event_handler(KeyEvent{
+			code:  if key == 'backspace' { KeyCode.backspace } else { KeyCode.delete }
+			shift: modifiers & 0x20000 != 0
+			ctrl:  modifiers & 0x40000 != 0
+			alt:   modifiers & 0x80000 != 0
+			cmd:   modifiers & 0x100000 != 0
+		})
+		consumed := st.key_consumed
+		st.key_consumed = false
+		return consumed
+	}
+	if voidptr(st.key_handler) == unsafe { nil } || (key != 'tab' && key != 'shift+tab') {
 		return false
 	}
 	st.key_consumed = false

@@ -791,6 +791,7 @@ fn node_to_element(node &VNode, frame Rect) !Element {
 		button_behavior:     el.kind == .view
 			&& (el.button_behavior || node.prop_bool('button_behavior'))
 		draggable:           node.prop_bool('draggable')
+		hoverable:           el.hoverable || node.prop_bool('hoverable')
 		long_press:          node.prop_bool('long_press')
 		swipe_left:          node.prop_bool('swipe_left')
 		rotation:            node.prop_or('rotation', '0').f64()

@@ -347,3 +347,18 @@ fn test_catalog_generated_geometry_handles_tiny_frames() {
 		}
 	}
 }
+
+fn test_component_action_helpers_reject_foreign_and_forged_actions() {
+	assert (component_action_part('rate', 'rate:component:star:3') or { '' }) == 'star:3'
+	for action in ['rate:component:', 'other:component:star:3', 'rate:star:3', ''] {
+		assert (component_action_part('rate', action) or { 'none' }) == 'none'
+	}
+	assert (component_action_part('', ':component:x') or { 'none' }) == 'none'
+	assert (component_parse_index('0', 5) or { -1 }) == 0
+	assert (component_parse_index('5', 5) or { -1 }) == 5
+	for digits in ['', '6', '05', '-1', '+1', '1x', ' 1', '99999999999999999999'] {
+		assert (component_parse_index(digits, 5) or { -1 }) == -1
+	}
+	assert (component_parse_index('2147483647', 2147483647) or { -1 }) == 2147483647
+	assert (component_parse_index('1', -1) or { -1 }) == -1
+}

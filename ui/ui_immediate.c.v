@@ -10,6 +10,7 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 	import math
 	import os
 	import sokol.sapp
+	import sokol.sgl
 	import time
 
 	struct HitTarget {
@@ -173,6 +174,27 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 	__global g_scroll_offsets = map[string]f64{}
 	__global g_scroll_content_h = map[string]f64{}
 	__global g_hit_targets = []HitTarget{}
+
+	// HoverRegion is the visible part of an element drawn this frame and the
+	// hoverable elements it belongs to, from the outermost in. The last region
+	// under the pointer is the topmost element there, so its chain is what the
+	// pointer hovers.
+	struct HoverRegion {
+		area  Rect
+		chain []string
+	}
+
+	__global g_hover_regions = []HoverRegion{}
+	__global g_hover_chain = []string{}
+	__global g_hovered = []string{}
+	__global g_hover_pointer = HoverPointer{}
+
+	struct HoverPointer {
+	mut:
+		x      f64
+		y      f64
+		inside bool
+	}
 	__global g_touch = TouchState{}
 	__global g_scroll_areas = map[string]Rect{}
 	__global g_active_fields = map[string]bool{}
@@ -682,6 +704,8 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 		mut has_root := false
 		if voidptr(g_build_screen) != unsafe { nil } {
 			g_hit_targets = []HitTarget{}
+			g_hover_regions = []HoverRegion{}
+			g_hover_chain = []string{}
 			g_tooltip_targets.clear()
 			g_tooltip_owners = 0
 			reset_scroll_frame()
@@ -723,6 +747,8 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 			update_tooltip(time.ticks())
 			draw_tooltip(ctx)
 			prune_unmounted_state()
+			// Content can move under a pointer that stays put.
+			update_hover()
 		}
 		check_long_press()
 		ctx.end()
@@ -741,6 +767,12 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 				// Recorded before any handler below can claim the move, so the
 				// tooltip always knows where the pointer is.
 				g_tooltip.pointer_moved(f64(e.mouse_x), f64(e.mouse_y), time.ticks())
+				g_hover_pointer = HoverPointer{
+					x: f64(e.mouse_x)
+					y: f64(e.mouse_y)
+					inside: true
+				}
+				update_hover()
 				if g_touch.down && g_touch.pointer_target.action_id.len > 0 {
 					handle_touch_move(f64(e.mouse_x), f64(e.mouse_y))
 					return
@@ -775,6 +807,8 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 			}
 			.mouse_leave {
 				g_tooltip.pointer_left()
+				g_hover_pointer.inside = false
+				update_hover()
 			}
 			.mouse_up {
 				if g_touch.down && g_touch.pointer_target.action_id.len > 0 {
@@ -1871,6 +1905,48 @@ fn page_focused_text_area(direction int) {
 	// add_tooltip_target registers the part of a target that is visible under
 	// the clip it was drawn with, so a control scrolled out of its viewport
 	// cannot answer for the pointer.
+	fn add_hover_region(area Rect, clip Rect) {
+		visible := intersect_rect(area, clip)
+		if visible.width <= 0 || visible.height <= 0 {
+			return
+		}
+		g_hover_regions << HoverRegion{
+			area: visible
+			chain: g_hover_chain
+		}
+	}
+
+	fn hovered_chain_at(x f64, y f64) []string {
+		for i := g_hover_regions.len - 1; i >= 0; i-- {
+			region := g_hover_regions[i]
+			if x >= region.area.x && x < region.area.x + region.area.width && y >= region.area.y
+				&& y < region.area.y + region.area.height {
+				return region.chain
+			}
+		}
+		return []string{}
+	}
+
+	// update_hover reports the hoverable elements the pointer left and entered
+	// since the last check, comparing what it hovers now with what it hovered.
+	fn update_hover() {
+		pointer := g_hover_pointer
+		current := if pointer.inside { hovered_chain_at(pointer.x, pointer.y) } else { []string{} }
+		left, entered := hover_transitions(g_hovered, current)
+		unsafe {
+			g_hovered = current
+		}
+		if voidptr(g_event_handler) == unsafe { nil } {
+			return
+		}
+		for action in left {
+			g_event_handler(pointer_event_id('leave', action, pointer.x, pointer.y))
+		}
+		for action in entered {
+			g_event_handler(pointer_event_id('enter', action, pointer.x, pointer.y))
+		}
+	}
+
 	fn add_tooltip_target(key string, text string, area Rect, clip Rect) {
 		visible := intersect_rect(area, clip)
 		if visible.width <= 0 || visible.height <= 0 {
@@ -2095,6 +2171,22 @@ fn page_focused_text_area(direction int) {
 		}
 		apply_clip(ctx, clip)
 		area := element_area(ctx, el, off_x, off_y)
+		// A chain is never changed once built — a hoverable element gets a new one —
+		// so regions and the stack share them without copying.
+		outer_hover_chain := g_hover_chain
+		if el.hoverable && element_action_id(el).len > 0 {
+			mut chain := outer_hover_chain.clone()
+			chain << element_action_id(el)
+			unsafe {
+				g_hover_chain = chain
+			}
+		}
+		add_hover_region(area, clip)
+		defer {
+			unsafe {
+				g_hover_chain = outer_hover_chain
+			}
+		}
 		// A declared tooltip covers the element's whole area and is registered
 		// before its children, so a child with hover text of its own wins over
 		// it where they overlap. A surface only has anything to hide once some
@@ -2126,9 +2218,7 @@ fn page_focused_text_area(direction int) {
 			.view {
 				x := el.frame.x + off_x
 				y := el.frame.y + off_y
-				if !el.box.transparent {
-					draw_rect(ctx, x, y, el.frame.width, el.frame.height, el.box.bg, el.box.radius)
-				}
+				draw_box_fill(ctx, x, y, el.frame.width, el.frame.height, el.box)
 				draw_box_borders(ctx, x, y, el.frame.width, el.frame.height, el.box)
 				if el.enabled && element_action_id(el).len > 0
 					&& (el.clickable || el.button_behavior || el.draggable || el.long_press
@@ -2219,7 +2309,9 @@ fn page_focused_text_area(direction int) {
 			.image {
 				x := el.frame.x + off_x
 				y := el.frame.y + off_y
-				if el.image_path.trim_space().len > 0
+				if name := symbol_name(el.image_path) {
+					draw_symbol_image(ctx, name, x, y, el.frame.width, el.frame.height, el.text_style.color)
+				} else if el.image_path.trim_space().len > 0
 					&& !draw_cached_image(ctx, el.image_path, x, y, el.frame.width, el.frame.height,
 					el.rotation) {
 					draw_rect(ctx, x, y, el.frame.width, el.frame.height, 0xe8ecef, 0)
@@ -2244,8 +2336,12 @@ fn page_focused_text_area(direction int) {
 				if el.native_style && el.box.bg == unstyled_box_bg {
 					draw_button_bezel(ctx, x, y, el.frame.width, el.frame.height, el.box.radius,
 						el.enabled)
-				} else if box_draws_fill(el.box) {
-					draw_rect(ctx, x, y, el.frame.width, el.frame.height, el.box.bg, el.box.radius)
+				} else {
+					// Gradients fill views; a button keeps its solid fill, as natively.
+					draw_box_fill(ctx, x, y, el.frame.width, el.frame.height, BoxStyle{
+						...el.box
+						gradient: Gradient{}
+					})
 				}
 				draw_box_borders(ctx, x, y, el.frame.width, el.frame.height, el.box)
 				image_layout := button_image_layout(el.frame.width, el.frame.height, el.text,
@@ -2298,8 +2394,11 @@ fn page_focused_text_area(direction int) {
 				if el.native_style && box.bg == unstyled_box_bg {
 					draw_button_bezel(ctx, x, y, el.frame.width, el.frame.height, box.radius,
 						el.enabled)
-				} else if box_draws_fill(box) {
-					draw_rect(ctx, x, y, el.frame.width, el.frame.height, box.bg, box.radius)
+				} else {
+					draw_box_fill(ctx, x, y, el.frame.width, el.frame.height, BoxStyle{
+						...box
+						gradient: Gradient{}
+					})
 				}
 				draw_box_borders(ctx, x, y, el.frame.width, el.frame.height, box)
 				shortened := draw_text_centered(ctx, el.text, x, y, el.frame.width, el.frame.height,
@@ -2758,9 +2857,24 @@ fn page_focused_text_area(direction int) {
 		}
 	}
 
+	// draw_symbol_image draws a `symbol:` image as its Material Icons glyph, as large
+	// as the frame allows and in the element's text color, which is what tints a
+	// symbol image on every backend.
+	fn draw_symbol_image(ctx &gg.Context, name string, x f64, y f64, width f64, height f64, color u32) {
+		size := math.min(width, height)
+		if size <= 0 {
+			return
+		}
+		draw_text_centered(ctx, symbol_glyph(name), x, y, width, height, TextStyle{
+			color:       color
+			font_family: 'Material Icons'
+			size:        size
+		})
+	}
+
 	fn draw_button_image(ctx &gg.Context, image_path string, x f64, y f64, width f64, height f64, style TextStyle) {
 		if image_path.starts_with('symbol:') {
-			symbol := system_symbol_fallback(image_path['symbol:'.len..])
+			symbol := symbol_glyph(image_path['symbol:'.len..])
 			draw_text_centered(ctx, symbol, x, y, width, height, TextStyle{
 				...style
 				font_family: 'Material Icons'
@@ -2773,107 +2887,12 @@ fn page_focused_text_area(direction int) {
 		}
 	}
 
-	// SF Symbols are used as native AppKit button images. Other custom-rendered
-	// desktops use equivalent glyphs from the bundled Material Icons face, which
-	// keeps the controls recognizable without depending on a host symbol font.
-	fn system_symbol_fallback(name string) string {
-		return match name {
-			'align.horizontal.center' { '\ue00f' }
-			'line.3.horizontal' { '\ue5d2' }
-			'text.justify' { '\ue235' }
-			'align.vertical.center' { '\ue011' }
-			'arrow.up.and.down', 'arrow.up.arrow.down' { '\ue8d5' }
-			'arrow.up.and.down.text.horizontal' { '\ue25b' }
-			'arrow.2.squarepath', 'arrow.triangle.2.circlepath' { '\ue627' }
-			'arrow.left.and.right' { '\ue8d4' }
-			'arrow.left.and.right.square' { '\ue933' }
-			'arrow.clockwise', 'arrow.clockwise.circle' { '\ue5d5' }
-			'clock.arrow.circlepath' { '\ue889' }
-			'arrow.down.right.and.arrow.up.left', 'arrow.up.and.down.and.arrow.left.and.right',
-			'move.3d' { '\uf1ce' }
-			'arrow.down.to.line' { '\ue258' }
-			'icloud.and.arrow.down' { '\ue2c0' }
-			'arrow.right.to.line', 'increase.indent' { '\ue23e' }
-			'arrow.uturn.backward' { '\ue166' }
-			'arrow.uturn.forward' { '\ue15a' }
-			'icloud.and.arrow.up' { '\ue2c3' }
-			'square.and.arrow.up' { '\ue2c6' }
-			'square.and.arrow.down' { '\ue161' }
-			'asterisk' { '\ue83a' }
-			'character.book.closed' { '\uea19' }
-			'textformat', 'textformat.abc' { '\ue262' }
-			'chart.bar', 'chart.bar.doc.horizontal', 'chart.bar.xaxis' { '\ue26b' }
-			'crop' { '\ue3be' }
-			'cube.transparent' { '\ue9fe' }
-			'square.on.circle' { '\ue574' }
-			'curlybraces' { '\ue86f' }
-			'cursorarrow' { '\ue323' }
-			'doc.badge.arrow.up' { '\ue9fc' }
-			'doc.badge.plus', 'text.badge.plus' { '\ue89c' }
-			'plus.rectangle' { '\ue146' }
-			'plus.rectangle.on.rectangle', 'plus.square.on.square' { '\ue02e' }
-			'doc.on.doc' { '\ue14d' }
-			'list.bullet.clipboard' { '\ue85d' }
-			'ellipsis' { '\ue5d3' }
-			'eye' { '\ue8f4' }
-			'eye.slash' { '\ue8f5' }
-			'folder' { '\ue2c7' }
-			'function' { '\ue24a' }
-			'gearshape' { '\ue8b8' }
-			'grid', 'rectangle.grid.2x2', 'rectangle.split.3x3', 'tablecells' { '\ue3ec' }
-			'info.circle' { '\ue88e' }
-			'line.vertical' { '\ue5d4' }
-			'list.number' { '\ue242' }
-			'number' { '\ue9ef' }
-			'lock', 'lock.doc' { '\ue897' }
-			'magnifyingglass', 'rectangle.and.text.magnifyingglass' { '\ue8b6' }
-			'minus' { '\ue15b' }
-			'minus.rectangle' { '\ue909' }
-			'number.circle' { '\ue400' }
-			'paintbrush' { '\ue3ae' }
-			'paintpalette' { '\ue40a' }
-			'pencil', 'pencil.line' { '\ue3c9' }
-			'person.2' { '\ue7ef' }
-			'person.crop.circle' { '\ue853' }
-			'person.crop.circle.badge.plus' { '\ue7fe' }
-			'photo' { '\ue410' }
-			'textbox' { '\ue262' }
-			'plus' { '\ue145' }
-			'printer' { '\ue8ad' }
-			'rectangle.3.group' { '\ue8f0' }
-			'rectangle.split.1x2' { '\uf114' }
-			'rectangle.split.2x1' { '\ue8f2' }
-			'rectangle.split.3x1' { '\ue8ec' }
-			'rectangle.bottomthird.inset.filled', 'rectangle.portrait.and.arrow.right',
-			'rectangle.righthalf.inset.filled.arrow.right',
-			'rectangle.topthird.inset.filled', 'sidebar.right' { '\uf114' }
-			'scissors' { '\ue14e' }
-			'seal' { '\uef76' }
-			'slider.horizontal.3' { '\ue429' }
-			'square.2.layers.3d.bottom.filled', 'square.2.layers.3d.top.filled',
-			'square.stack.3d.up' { '\ue53b' }
-			'star' { '\ue838' }
-			'star.circle' { '\ue8d0' }
-			'tag' { '\ue892' }
-			'text.alignleft' { '\ue236' }
-			'text.alignright' { '\ue237' }
-			'text.bubble' { '\ue0cb' }
-			'textformat.123' { '\ueb8d' }
-			'textformat.size' { '\ue245' }
-			'textformat.size.larger' { '\ueae2' }
-			'trash' { '\ue872' }
-			'xmark' { '\ue5cd' }
-			else { '\ue8fd' }
-		}
-	}
-
 	fn preload_images(el Element) {
 		if el.hidden {
 			return
 		}
-		if el.kind == .image
-			|| (el.kind == .button && el.image_path.trim_space().len > 0
-			&& !el.image_path.starts_with('symbol:')) {
+		if (el.kind == .image || (el.kind == .button && el.image_path.trim_space().len > 0))
+			&& !el.image_path.starts_with('symbol:') {
 			cache_image(el.image_path)
 		}
 		for child in el.children {
@@ -2919,10 +2938,166 @@ fn page_focused_text_area(direction int) {
 	fn draw_rect(ctx &gg.Context, x f64, y f64, w f64, h f64, color_hex u32, radius f64) {
 		c := hex_color(color_hex)
 		if radius > 0 {
-			ctx.draw_rounded_rect_filled(f32(x), f32(y), f32(w), f32(h), f32(radius), c)
+			fill_rounded_rect(ctx, x, y, w, h, radius, c)
 		} else {
 			ctx.draw_rect_filled(f32(x), f32(y), f32(w), f32(h), c)
 		}
+	}
+
+	// fill_rounded_rect fills a rounded rectangle as a fan from its center. gg's
+	// own spends a fixed few hundred vertices on each one whatever its size, and
+	// sokol-gl draws at most 65536 a frame, so a window full of rounded controls
+	// came out blank; here each corner gets as many segments as its radius needs
+	// to look round, from 2 to 16.
+	fn fill_rounded_rect(ctx &gg.Context, x f64, y f64, w f64, h f64, radius f64, c gg.Color) {
+		if w <= 0 || h <= 0 {
+			return
+		}
+		r := math.max(0, math.min(radius, math.min(w, h) / 2))
+		scale := f64(ctx.scale)
+		segments := int(math.min(math.max(math.sqrt(r * scale) * 1.5, 2), 16))
+		points := rounded_outline(x, y, w, h, r, segments)
+		if c.a != 255 {
+			sgl.load_pipeline(ctx.pipeline.alpha)
+		}
+		sgl.c4b(c.r, c.g, c.b, c.a)
+		cx := f32((x + w / 2) * scale)
+		cy := f32((y + h / 2) * scale)
+		sgl.begin_triangles()
+		for i in 0 .. points.len {
+			a := points[i]
+			b := points[(i + 1) % points.len]
+			sgl.v2f(cx, cy)
+			sgl.v2f(f32(a[0] * scale), f32(a[1] * scale))
+			sgl.v2f(f32(b[0] * scale), f32(b[1] * scale))
+		}
+		sgl.end()
+	}
+
+	fn draw_rect_alpha(ctx &gg.Context, x f64, y f64, w f64, h f64, color_hex u32, alpha f64, radius f64) {
+		if w <= 0 || h <= 0 || alpha <= 0 {
+			return
+		}
+		c := gg.Color{
+			...hex_color(color_hex)
+			a: u8(math.round(unit_clamp(alpha) * 255))
+		}
+		if radius > 0 {
+			fill_rounded_rect(ctx, x, y, w, h, radius, c)
+		} else {
+			ctx.draw_rect_filled(f32(x), f32(y), f32(w), f32(h), c)
+		}
+	}
+
+	// draw_box_fill paints what a BoxStyle puts beneath its borders: the drop
+	// shadow, then the gradient or the solid color at the box's fill opacity.
+	fn draw_box_fill(ctx &gg.Context, x f64, y f64, w f64, h f64, box BoxStyle) {
+		if box_has_shadow(box) {
+			draw_box_shadow(ctx, x, y, w, h, box.radius, box.shadow)
+		}
+		opacity := box_fill_opacity(box)
+		if opacity <= 0 {
+			return
+		}
+		if box_has_gradient(box) {
+			draw_gradient_rect(ctx, x, y, w, h, box.radius, box.gradient, opacity)
+		} else if opacity >= 1 {
+			draw_rect(ctx, x, y, w, h, box.bg, box.radius)
+		} else {
+			draw_rect_alpha(ctx, x, y, w, h, box.bg, opacity, box.radius)
+		}
+	}
+
+	// draw_box_shadow stands in for a Gaussian blur with a stack of translucent
+	// rounded rectangles, from `blur / 2` outside the shadow's edge to `blur / 2`
+	// inside it. Where k of the n layers overlap the alpha is 1 - (1 - a)^k, so
+	// it rises across the blur and reaches the shadow's opacity inside it.
+	fn draw_box_shadow(ctx &gg.Context, x f64, y f64, w f64, h f64, radius f64, shadow BoxShadow) {
+		opacity := unit_clamp(shadow.opacity)
+		sx := x + shadow.x - shadow.spread
+		sy := y + shadow.y - shadow.spread
+		sw := w + 2 * shadow.spread
+		sh := h + 2 * shadow.spread
+		sr := math.max(radius + shadow.spread, 0)
+		blur := if math.is_nan(shadow.blur) { 0.0 } else { math.max(shadow.blur, 0) }
+		if blur < 1 {
+			draw_rect_alpha(ctx, sx, sy, sw, sh, shadow.color, opacity, sr)
+			return
+		}
+		steps := int(math.min(math.max(blur / 3 + 2, 3), 6))
+		per_layer := 1 - math.pow(1 - opacity, 1.0 / f64(steps))
+		for i in 0 .. steps {
+			grow := blur / 2 - blur * f64(i) / f64(steps - 1)
+			layer_w := sw + 2 * grow
+			layer_h := sh + 2 * grow
+			if layer_w <= 0 || layer_h <= 0 {
+				continue
+			}
+			layer_r := math.min(math.max(sr + grow, 0), math.min(layer_w, layer_h) / 2)
+			draw_rect_alpha(ctx, sx - grow, sy - grow, layer_w, layer_h, shadow.color, per_layer,
+				layer_r)
+		}
+	}
+
+	// rounded_inset is how far in from the side a rounded box's edge is at height
+	// `y` from its top, for corner radius r.
+	fn rounded_inset(y f64, h f64, r f64) f64 {
+		dy := if y < r { r - y } else if y > h - r { y - (h - r) } else { 0.0 }
+		if dy <= 0 || r <= 0 {
+			return 0
+		}
+		return r - math.sqrt(math.max(r * r - dy * dy, 0))
+	}
+
+	// draw_gradient_rect fills a (rounded) box with a linear gradient. The box is
+	// cut into rows that follow its rounded edge and the rows into small cells,
+	// each a quad whose corners take the gradient's color there; the GPU blends
+	// across a cell, which is exact for a gradient between two stops and close for
+	// more.
+	fn draw_gradient_rect(ctx &gg.Context, x f64, y f64, w f64, h f64, radius f64, gradient Gradient, opacity f64) {
+		if w <= 0 || h <= 0 {
+			return
+		}
+		stops := gradient_sorted_stops(gradient)
+		line := gradient_line(gradient.angle, w, h)
+		r := math.max(0, math.min(radius, math.min(w, h) / 2))
+		scale := f64(ctx.scale)
+		// About 16 cells each way, whatever the size, keeps a gradient to a few
+		// thousand vertices of sokol-gl's 65536 a frame.
+		cell_w := math.max(4.0, w / 16)
+		cell_h := math.max(4.0, (h - 2 * r) / 16)
+		corner_step := math.max(1.0, r / 8)
+		sgl.load_pipeline(ctx.pipeline.alpha)
+		sgl.begin_quads()
+		mut top := 0.0
+		for top < h {
+			// Rows are short across the rounded corners, where the edge curves.
+			step := if top < r || top + cell_h > h - r { corner_step } else { cell_h }
+			bottom := math.min(top + step, h)
+			inset_top := rounded_inset(top, h, r)
+			inset_bottom := rounded_inset(bottom, h, r)
+			columns := int(math.ceil(w / cell_w))
+			for c in 0 .. columns {
+				f0 := f64(c) / f64(columns)
+				f1 := f64(c + 1) / f64(columns)
+				xt0 := inset_top + (w - 2 * inset_top) * f0
+				xt1 := inset_top + (w - 2 * inset_top) * f1
+				xb0 := inset_bottom + (w - 2 * inset_bottom) * f0
+				xb1 := inset_bottom + (w - 2 * inset_bottom) * f1
+				gradient_vertex(line, stops, opacity, x, y, xt0, top, scale)
+				gradient_vertex(line, stops, opacity, x, y, xt1, top, scale)
+				gradient_vertex(line, stops, opacity, x, y, xb1, bottom, scale)
+				gradient_vertex(line, stops, opacity, x, y, xb0, bottom, scale)
+			}
+			top = bottom
+		}
+		sgl.end()
+	}
+
+	fn gradient_vertex(line GradientLine, stops []GradientStop, opacity f64, ox f64, oy f64, lx f64, ly f64, scale f64) {
+		color, alpha := gradient_color_at(stops, gradient_position(line, lx, ly))
+		sgl.c4b(u8((color >> 16) & 0xff), u8((color >> 8) & 0xff), u8(color & 0xff), u8(math.round(alpha * opacity * 255)))
+		sgl.v2f(f32((ox + lx) * scale), f32((oy + ly) * scale))
 	}
 
 	fn draw_outline(ctx &gg.Context, x f64, y f64, w f64, h f64, color_hex u32, radius f64) {
@@ -2938,6 +3113,12 @@ fn page_focused_text_area(direction int) {
 	}
 
 	fn draw_box_borders(ctx &gg.Context, x f64, y f64, w f64, h f64, box BoxStyle) {
+		rounded := box_rounded_border(box)
+		if rounded > 0 {
+			draw_rounded_ring(ctx, x, y, w, h, box.radius, box_border_width(rounded, math.min(w,
+				h) / 2), box.border_color)
+			return
+		}
 		left := box_border_width(box.border_left, w)
 		top := box_border_width(box.border_top, h)
 		right := box_border_width(box.border_right, w)
@@ -2954,6 +3135,47 @@ fn page_focused_text_area(direction int) {
 		if bottom > 0 {
 			draw_rect(ctx, x, y + h - bottom, w, bottom, box.border_color, 0)
 		}
+	}
+
+	// rounded_outline lists points around a rounded rectangle, clockwise from the
+	// start of its top-left corner, with the same count whatever the radius so
+	// an outer and an inner outline pair up point for point.
+	fn rounded_outline(x f64, y f64, w f64, h f64, radius f64, segments int) [][]f64 {
+		r := math.max(0, math.min(radius, math.min(w, h) / 2))
+		centers := [[x + r, y + r], [x + w - r, y + r], [x + w - r, y + h - r], [x + r, y + h - r]]
+		mut points := [][]f64{cap: 4 * (segments + 1)}
+		for corner, center in centers {
+			start := math.pi * (1.0 + 0.5 * f64(corner))
+			for i in 0 .. segments + 1 {
+				angle := start + math.pi / 2 * f64(i) / f64(segments)
+				points << [center[0] + r * math.cos(angle), center[1] + r * math.sin(angle)]
+			}
+		}
+		return points
+	}
+
+	// draw_rounded_ring draws an even border that follows a box's rounded
+	// corners: the band between its outline and the outline `width` inside it.
+	fn draw_rounded_ring(ctx &gg.Context, x f64, y f64, w f64, h f64, radius f64, width f64, color_hex u32) {
+		if width <= 0 || w <= 0 || h <= 0 {
+			return
+		}
+		segments := int(math.max(4, math.min(16, radius / 2)))
+		outer := rounded_outline(x, y, w, h, radius, segments)
+		inner := rounded_outline(x + width, y + width, w - 2 * width, h - 2 * width, radius - width,
+			segments)
+		c := hex_color(color_hex)
+		scale := f64(ctx.scale)
+		sgl.load_pipeline(ctx.pipeline.alpha)
+		sgl.c4b(c.r, c.g, c.b, c.a)
+		sgl.begin_triangle_strip()
+		for i in 0 .. outer.len + 1 {
+			o := outer[i % outer.len]
+			n := inner[i % inner.len]
+			sgl.v2f(f32(o[0] * scale), f32(o[1] * scale))
+			sgl.v2f(f32(n[0] * scale), f32(n[1] * scale))
+		}
+		sgl.end()
 	}
 
 	fn draw_control_surface(ctx &gg.Context, x f64, y f64, w f64, h f64, box BoxStyle, focused bool, enabled bool) {

@@ -150,28 +150,11 @@ pub fn pagination_action_id(id string, page int) string {
 // disabled, out-of-range, and current-page actions. Use it in on_event and
 // rebuild with pagination_state(new_page, state.total_pages()).
 pub fn pagination_page_from_action(id string, state PaginationState, action string) ?int {
-	if id.len == 0 {
+	part := component_action_part(id, action) or { return none }
+	if !part.starts_with('page:') {
 		return none
 	}
-	prefix := component_part_id(id, 'page:')
-	if !action.starts_with(prefix) {
-		return none
-	}
-	digits := action[prefix.len..]
-	if digits.len == 0 || (digits.len > 1 && digits[0] == `0`) {
-		return none
-	}
-	mut page := 0
-	for ch in digits.bytes() {
-		if ch < `0` || ch > `9` {
-			return none
-		}
-		digit := int(ch - `0`)
-		if digit > state.pages || page > (state.pages - digit) / 10 {
-			return none
-		}
-		page = page * 10 + digit
-	}
+	page := component_parse_index(part['page:'.len..], state.pages) or { return none }
 	return state.request_page(page)
 }
 

@@ -163,10 +163,10 @@ fn native_image_from_name(name string) macos.Id {
 	}
 	ns_name := macos.nsstring(name)
 	if name.starts_with('symbol:') {
-		symbol_name := macos.nsstring(name['symbol:'.len..])
+		ns_symbol := macos.nsstring(name['symbol:'.len..])
 		image_class := macos.get_class('NSImage')
 		if macos.responds_to(image_class, 'imageWithSystemSymbolName:accessibilityDescription:') {
-			symbol_image := macos.msg_id2(image_class, 'imageWithSystemSymbolName:accessibilityDescription:', symbol_name, objc_nil())
+			symbol_image := macos.msg_id2(image_class, 'imageWithSystemSymbolName:accessibilityDescription:', ns_symbol, objc_nil())
 			if !objc_is_nil(symbol_image) {
 				return symbol_image
 			}
@@ -266,8 +266,11 @@ fn native_accessibility_role(role string) macos.Id {
 		'progressbar' { macos.nsstring('AXProgressIndicator') }
 		// ui2's combobox is a select-only dropdown, which WebKit exposes as a pop-up.
 		'combobox' { macos.nsstring('AXPopUpButton') }
-		// A tab is a pressable choice among its siblings.
-		'tab' { macos.nsstring('AXRadioButton') }
+		// A tab is a pressable choice among its siblings, as a radio is.
+		'tab', 'radio' { macos.nsstring('AXRadioButton') }
+		'radiogroup' { macos.nsstring('AXRadioGroup') }
+		'menu' { macos.nsstring('AXMenu') }
+		'menuitem', 'menuitemcheckbox', 'menuitemradio' { macos.nsstring('AXMenuItem') }
 		'list' { macos.nsstring('AXList') }
 		else { if role.starts_with('AX') { macos.nsstring(role) } else { objc_nil() } }
 	}

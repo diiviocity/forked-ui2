@@ -307,6 +307,22 @@ or gesture phases. Use `button_behavior` for a normal action-bearing composite
 control. If both flags are set, the surface emits the raw pointer phases and
 then its ordinary action after a successful tap.
 
+### Hover
+
+`hoverable: true` (or `ui2.with_hover(el)`) makes any element report
+`pointer:enter:<action>:<x>:<y>` when the pointer comes over it and
+`pointer:leave:...` when it goes, so a hover card can open or a row can
+highlight. `ui2.parse_pointer_event(event)` decodes these and the other
+pointer phases, including actions that contain colons.
+
+Hover follows the CSS `:hover` rule on AppKit, Windows and the custom renderer
+alike: an element is hovered while the topmost element under the pointer is it
+or one of its descendants. Moving onto a child keeps its hoverable ancestors
+hovered, an element covered by another one is not hovered, and hover is checked
+again after every render, so content moving under a still pointer is reported
+too. Leaves are reported innermost first and enters outermost first. Touch
+platforms (iOS, Android) have no hover.
+
 To reuse that style, put the defaults in a sibling VML module. `PrimaryButton`
 can live in `PrimaryButton.vml` or the conventional snake-case
 `primary_button.vml`:
@@ -461,6 +477,48 @@ fn save_card(id string, action string, frame ui2.Rect) ui2.Element {
 already exists. `button_view` and `with_button_behavior` leave the raw
 `clickable` flag unset.
 
+## Box effects
+
+`BoxStyle` can fade, shade and color a box beyond its solid `bg`:
+
+```v
+card := ui2.view('card', ui2.rect(20, 20, 280, 160), ui2.BoxStyle{
+	bg:     0xffffff
+	radius: 12
+	shadow: ui2.box_shadow(0x000000, 0.18, 24, 8) // color, opacity, blur, y offset
+}, children)
+
+backdrop := ui2.view('backdrop', ui2.rect(0, 0, w, h), ui2.BoxStyle{
+	bg:      0x000000
+	opacity: 0.4 // the fill only; borders and children keep theirs
+}, [])
+
+banner := ui2.view('banner', ui2.rect(0, 0, w, 120), ui2.BoxStyle{
+	gradient: ui2.linear_gradient(90, ui2.gradient_stop(0x2563eb, 0),
+		ui2.gradient_stop(0x9333ea, 1))
+}, [])
+```
+
+- `opacity` (0 to 1) fades the fill and nothing else.
+- `gradient` replaces `bg` on a view with a linear gradient: `angle` in degrees
+  (0 runs left to right, 90 top to bottom) and two or more stops, each with a
+  position from 0 to 1 and an optional opacity. Like CSS `linear-gradient`, it
+  spans the box corner to corner along its angle. Buttons keep their solid fill
+  (a native button draws its title beneath any gradient layer); make a gradient
+  button from a view with `button_behavior`.
+- `shadow` draws a drop shadow beneath the box: `color`, `opacity`, `blur`,
+  offset `x`/`y` and `spread`, as in CSS `box-shadow`. A box that casts a shadow
+  does not clip its children to its rounded corners on AppKit and UIKit, since a
+  layer masking to its bounds masks its shadow away too.
+
+All three are animatable through `animation_number_property('box.opacity', ...)`
+and the like. AppKit and UIKit use CoreAnimation (`NSShadow`/layer shadows and a
+`CAGradientLayer`), and the custom renderer draws them itself. Windows draws
+fill opacity and gradients with `AlphaBlend` and `GradientFill`, but not a
+gradient's per-stop opacity, and it draws no shadows: Win32 child windows cannot
+paint outside themselves. Screenshots taken with `UI2_SCREENSHOT_PATH` on AppKit
+do not show CoreAnimation shadows, which `cacheDisplayInRect:` does not render.
+
 ## Backend capabilities
 
 Call `control_support(kind)` to query support. macOS implements every shared
@@ -576,6 +634,44 @@ MessageBox {
     Button { id: close_message text: "OK" on_tap: app.close_message() }
 }
 ```
+
+## Timers
+
+`after` runs a callback on the UI thread once a delay has passed and then
+rebuilds the window, so a notification can dismiss itself or a search can
+debounce without the application owning a thread:
+
+```v
+toast := ui2.after(4, fn [mut app] () {
+	app.toast_visible = false
+})
+ui2.cancel_timer(toast) // call it off, e.g. when the user dismisses it first
+```
+
+Callbacks run where widget animation callbacks do, between building the
+declared tree and rendering it, and a refresh is requested so whatever they
+change is drawn next. `timer_pending(id)` reports whether a callback has yet to
+run. A negative or non-finite delay runs at the next build.
+
+## Clipboard
+
+`set_clipboard_text` replaces the system clipboard with plain text and
+`clipboard_text` reads it back (`none` when it holds no text). Text fields
+keep their own copy and paste; these are for copying anything else, such as
+the contents of a code block.
+
+```v
+if !ui2.set_clipboard_text(token) {
+	// no clipboard this platform can reach
+}
+pasted := ui2.clipboard_text() or { '' }
+```
+
+macOS uses `NSPasteboard`, iOS `UIPasteboard` and Windows the Win32 clipboard,
+for native and custom-rendered windows alike. Linux drives `wl-copy`/`wl-paste`
+under Wayland, or `xclip` or `xsel` under X11, so one of them has to be
+installed; Android has no clipboard this layer can reach. Check
+`clipboard_supported()` before offering a copy action.
 
 ## File and folder dialogs
 

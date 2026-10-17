@@ -119,13 +119,14 @@ pub fn component_inset(frame Rect, padding f64) !Rect {
 
 // component_text_width_estimate approximates how wide text renders. ui/ has no
 // backend-neutral measurement, so wide (CJK, emoji) runes count as one em and the
-// rest as a typical proportional glyph; callers add padding for the slack.
+// rest as a typical proportional glyph; callers add padding for the slack. The em
+// is the platform's: a point is 4/3 of a pixel on Windows and Linux.
 fn component_text_width_estimate(text string, font_size f64) f64 {
 	mut ems := 0.0
 	for r in text.runes() {
 		ems += if r >= 0x2e80 { 1.0 } else { 0.62 }
 	}
-	return ems * font_size
+	return ems * font_em_pixels(font_size)
 }
 
 fn component_local(frame Rect) Rect {
@@ -134,6 +135,53 @@ fn component_local(frame Rect) Rect {
 
 fn component_part_id(id string, part string) string {
 	return if id.len == 0 { '' } else { '${id}:component:${part}' }
+}
+
+// component_action_part returns what follows `${id}:component:` in an action an
+// interactive component emitted, or none when the action belongs to something
+// else. Each component's decoder builds on it to turn an action back into a
+// typed request against the application's current state.
+pub fn component_action_part(id string, action string) ?string {
+	if id.len == 0 {
+		return none
+	}
+	prefix := component_part_id(id, '')
+	if !action.starts_with(prefix) || action.len == prefix.len {
+		return none
+	}
+	return action[prefix.len..]
+}
+
+// component_parse_index decodes the decimal a component wrote into an action:
+// digits only, no sign and no leading zero, and no larger than limit. Checking
+// against limit digit by digit means a forged action can neither overflow nor
+// name something the component never showed.
+fn component_parse_index(digits string, limit int) ?int {
+	if digits.len == 0 || limit < 0 || (digits.len > 1 && digits[0] == `0`) {
+		return none
+	}
+	mut value := 0
+	for ch in digits.bytes() {
+		if ch < `0` || ch > `9` {
+			return none
+		}
+		digit := int(ch - `0`)
+		if digit > limit || value > (limit - digit) / 10 {
+			return none
+		}
+		value = value * 10 + digit
+	}
+	return value
+}
+
+// component_keep_animating starts definition on id unless an animation is
+// already running there, so a component can ask for its looping animation on
+// every build without restarting it from the beginning.
+pub fn component_keep_animating(id string, definition Animation) {
+	if id.len == 0 || animation_info(id).status == .running {
+		return
+	}
+	definition.start(id)
 }
 
 fn component_box(bg u32, border u32, radius f64) BoxStyle {

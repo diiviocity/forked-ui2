@@ -280,6 +280,18 @@ fn font_bundle_dirs() []string {
 	]
 }
 
+// font_bundle_file returns the path of a font file shipped with the application
+// or with ui2 itself, or '' when none of the bundle directories has it.
+fn font_bundle_file(file_name string) string {
+	for dir in font_bundle_dirs() {
+		path := os.join_path(dir, file_name)
+		if os.is_file(path) {
+			return path
+		}
+	}
+	return ''
+}
+
 // font_system_dirs are the font trees the platform installs into.
 fn font_system_dirs() []string {
 	home := os.home_dir()

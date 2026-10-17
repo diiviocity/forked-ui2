@@ -478,6 +478,13 @@ fn canonical_animation_property_name(name string) string {
 		'corner_radius', 'box.radius' { 'corner_radius' }
 		'box.border_color' { 'box.border_color' }
 		'box.border_left' { 'box.border_left' }
+		'box.opacity' { 'box.opacity' }
+		'box.shadow.opacity' { 'box.shadow.opacity' }
+		'box.shadow.blur' { 'box.shadow.blur' }
+		'box.shadow.x' { 'box.shadow.x' }
+		'box.shadow.y' { 'box.shadow.y' }
+		'box.shadow.spread' { 'box.shadow.spread' }
+		'box.shadow.color' { 'box.shadow.color' }
 		'box.border_top' { 'box.border_top' }
 		'box.border_right' { 'box.border_right' }
 		'box.border_bottom' { 'box.border_bottom' }
@@ -525,7 +532,7 @@ fn canonical_animation_property_name(name string) string {
 
 fn animation_property_kind_matches(name string, kind AnimationPropertyKind) bool {
 	return match name {
-		'background', 'box.border_color', 'text_color', 'text_background', 'slider_style.track_color', 'slider_style.value_track_color', 'slider_style.thumb_color', 'switch_style.inactive_track_color', 'switch_style.active_track_color', 'switch_style.thumb_color', 'switch_style.disabled_track_color', 'switch_style.disabled_thumb_color', 'toggle_down_box.bg', 'toggle_down_box.border_color', 'toggle_down_text_style.color', 'toggle_down_text_style.background_color' {
+		'background', 'box.border_color', 'box.shadow.color', 'text_color', 'text_background', 'slider_style.track_color', 'slider_style.value_track_color', 'slider_style.thumb_color', 'switch_style.inactive_track_color', 'switch_style.active_track_color', 'switch_style.thumb_color', 'switch_style.disabled_track_color', 'switch_style.disabled_thumb_color', 'toggle_down_box.bg', 'toggle_down_box.border_color', 'toggle_down_text_style.color', 'toggle_down_text_style.background_color' {
 			kind == .color
 		}
 		else { kind == .number }
@@ -721,6 +728,11 @@ fn apply_widget_animations_at(root Element, now i64) Element {
 	result := apply_widget_animation_node(root, now, mut pending)
 	runtime.mutex.unlock()
 	dispatch_animation_events(pending)
+	// `after` callbacks run at the same point as animation callbacks; what they
+	// change is picked up by the build this refresh asks for.
+	if run_due_timers(now) {
+		request_animation_refresh()
+	}
 	return result
 }
 
@@ -730,9 +742,12 @@ fn apply_widget_animation_node(declared Element, now i64, mut pending []PendingA
 	for child in declared.children {
 		children << apply_widget_animation_node(child, now, mut pending)
 	}
+	// Every backend renders what this pass returns, so `lines: 0` ("as many lines
+	// as fit") is resolved here once instead of in each backend's text code.
 	mut result := Element{
 		...declared
-		children: children
+		children:   children
+		text_style: text_style_with_line_budget(declared.text_style)
 	}
 	if declared.id.len == 0 {
 		return result
@@ -1022,6 +1037,12 @@ fn animation_number_property_value(element Element, property string) f64 {
 		'rotation' { element.rotation }
 		'corner_radius' { element.box.radius }
 		'box.border_left' { element.box.border_left }
+		'box.opacity' { element.box.opacity }
+		'box.shadow.opacity' { element.box.shadow.opacity }
+		'box.shadow.blur' { element.box.shadow.blur }
+		'box.shadow.x' { element.box.shadow.x }
+		'box.shadow.y' { element.box.shadow.y }
+		'box.shadow.spread' { element.box.shadow.spread }
 		'box.border_top' { element.box.border_top }
 		'box.border_right' { element.box.border_right }
 		'box.border_bottom' { element.box.border_bottom }
@@ -1061,6 +1082,7 @@ fn animation_color_property_value(element Element, property string) u32 {
 	return match property {
 		'background' { element.box.bg }
 		'box.border_color' { element.box.border_color }
+		'box.shadow.color' { element.box.shadow.color }
 		'text_color' { element.text_style.color }
 		'text_background' { element.text_style.background_color }
 		'slider_style.track_color' { element.slider_style.track_color }
@@ -1091,6 +1113,24 @@ fn set_number_animation_property(element Element, property string, value f64) El
 		'corner_radius' { Element{ ...element, box: BoxStyle{ ...element.box, radius: value } } }
 		'box.border_left' {
 			Element{ ...element, box: BoxStyle{ ...element.box, border_left: value } }
+		}
+		'box.opacity' {
+			Element{ ...element, box: BoxStyle{ ...element.box, opacity: value } }
+		}
+		'box.shadow.opacity' {
+			Element{ ...element, box: BoxStyle{ ...element.box, shadow: BoxShadow{ ...element.box.shadow, opacity: value } } }
+		}
+		'box.shadow.blur' {
+			Element{ ...element, box: BoxStyle{ ...element.box, shadow: BoxShadow{ ...element.box.shadow, blur: value } } }
+		}
+		'box.shadow.x' {
+			Element{ ...element, box: BoxStyle{ ...element.box, shadow: BoxShadow{ ...element.box.shadow, x: value } } }
+		}
+		'box.shadow.y' {
+			Element{ ...element, box: BoxStyle{ ...element.box, shadow: BoxShadow{ ...element.box.shadow, y: value } } }
+		}
+		'box.shadow.spread' {
+			Element{ ...element, box: BoxStyle{ ...element.box, shadow: BoxShadow{ ...element.box.shadow, spread: value } } }
 		}
 		'box.border_top' {
 			Element{ ...element, box: BoxStyle{ ...element.box, border_top: value } }
@@ -1168,6 +1208,9 @@ fn set_color_animation_property(element Element, property string, value u32) Ele
 		'background' { Element{ ...element, box: BoxStyle{ ...element.box, bg: value } } }
 		'box.border_color' {
 			Element{ ...element, box: BoxStyle{ ...element.box, border_color: value } }
+		}
+		'box.shadow.color' {
+			Element{ ...element, box: BoxStyle{ ...element.box, shadow: BoxShadow{ ...element.box.shadow, color: value } } }
 		}
 		'text_color' {
 			Element{ ...element, text_style: TextStyle{ ...element.text_style, color: value } }
@@ -1281,4 +1324,18 @@ fn reset_widget_animations() {
 	runtime.runs = map[string]AnimationRun{}
 	runtime.driver_running = false
 	runtime.mutex.unlock()
+}
+
+// text_lines_unlimited is the line budget `lines: 0` stands for: more than any
+// frame shows, so text wraps until it runs out or the frame cuts it off.
+const text_lines_unlimited = 10000
+
+fn text_style_with_line_budget(style TextStyle) TextStyle {
+	if style.lines > 0 {
+		return style
+	}
+	return TextStyle{
+		...style
+		lines: text_lines_unlimited
+	}
 }
