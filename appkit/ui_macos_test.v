@@ -5,6 +5,7 @@ module ui2
 $if !ui2_custom_rendering ? {
 
 import macos
+import math
 
 fn test_appkit_key_codes_use_physical_ansi_positions() {
 	assert appkit_key_code(0x2b) == .comma
@@ -435,6 +436,48 @@ fn test_macos_unlimited_line_budget_wraps() {
 	assert !macos.msg_bool(macos.msg_id(field, 'cell'), 'usesSingleLineMode')
 	native_apply_line_limit(field, 1)
 	assert macos.msg_bool(macos.msg_id(field, 'cell'), 'usesSingleLineMode')
+}
+
+fn test_macos_bordered_text_field_draws_its_box_instead_of_a_bezel() {
+	pool := macos.autorelease_pool_new()
+	defer {
+		macos.release(pool)
+	}
+	ensure_runtime_classes()
+	styled := native_new_text_field(Element{
+		...text_field('styled', 'Message', '', rect(0, 0, 240, 40), BoxStyle{
+			bg:            0x1e293b
+			radius:        8
+			border_color:  0x334155
+			border_left:   1
+			border_top:    1
+			border_right:  1
+			border_bottom: 1
+		}, TextStyle{
+			size: 14
+		}, keyboard_default)
+		padding_left: 12
+	})
+	defer {
+		macos.release(styled)
+	}
+	plain := native_new_text_field(text_field('plain', 'Name', '', rect(0, 0, 200, 32),
+		BoxStyle{}, TextStyle{}, keyboard_default))
+	defer {
+		macos.release(plain)
+	}
+	assert !macos.msg_bool(styled, 'isBezeled')
+	assert macos.msg_bool(plain, 'isBezeled')
+	cell := macos.msg_id(styled, 'cell')
+	assert macos.msg_bool_id(cell, 'isKindOfClass:', macos.get_class('UI2TextFieldCell'))
+	// One line of 14 pt text, centered in the 40 pt field and moved in by the padding.
+	text_rect := C.ui2_macos_msg_rect_rect(cell, macos.sel('drawingRectForBounds:'), C.ui2_macos_rect{
+		width:  240
+		height: 40
+	})
+	assert text_rect.height > 14 && text_rect.height < 24
+	assert math.abs(text_rect.y + text_rect.height / 2 - 20) < 1
+	assert text_rect.x >= 12
 }
 
 fn native_appearance_name(view NativeView) string {

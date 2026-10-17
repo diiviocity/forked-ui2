@@ -136,10 +136,10 @@ exists; **Planned** — scheduled for the named batch. Per-group details live in
 | accordion | `accordion` | Existing | Feature audit pending |
 | alert-dialog | `alert_dialog` | Done (batch 3) | Native `confirm` also exists; [dialogs](gpui-kit/dialogs.md) |
 | alert | `inline_alert` | Done (batch 1) |  |
-| attachment | — | Planned (batch 7) |  |
-| avatar | `avatar` | Partial | Avatar group in batch 2 |
+| attachment | `attachment`, `attachment_group` | Done (batch 7) | Upload states, previews, groups; [attachments](gpui-kit/attachments.md) |
+| avatar | `avatar`, `avatar_group` | Done (batch 7) | Avatar group with overflow; [chat](gpui-kit/chat.md) |
 | badge | `badge` | Done (batch 1) |  |
-| bubble | — | Planned (batch 7) |  |
+| bubble | `bubble`, `bubble_group` | Done (batch 7) | Variants, groups, reactions; [chat](gpui-kit/chat.md) |
 | button | `styled_button`, `button_group`, `button` | Done (batch 2) | Variants and button group; [choice](gpui-kit/choice.md) |
 | calendar | `calendar`, `CalendarDate` | Done (batch 4) | [datetime](gpui-kit/datetime.md) |
 | carousel | `carousel` | Existing | Feature audit pending |
@@ -171,10 +171,10 @@ exists; **Planned** — scheduled for the named batch. Per-group details live in
 | kbd | `kbd` | Done (batch 1) |  |
 | label | `label` | Existing |  |
 | list | `list`, `searchable_list` | Done (batch 5) | [lists](gpui-kit/lists.md) |
-| marker | — | Planned (batch 7) |  |
+| marker | `marker` | Done (batch 7) | [chat](gpui-kit/chat.md) |
 | menu | `dropdown_menu`, `set_menu_bar`, `Element.menu`, tray | Done (batch 3) | Dropdown/popup menus with submenus; [popovers](gpui-kit/popovers.md) |
-| message-scroller | — | Planned (batch 7) |  |
-| message | — | Planned (batch 7) |  |
+| message-scroller | `message_scroller`, `MessageScrollerState` | Done (batch 7) | Follow-tail, prepend anchoring, unread; [messages](gpui-kit/messages.md) |
+| message | `chat_message`, `chat_message_group` | Done (batch 7) | Named `chat_message`; [chat](gpui-kit/chat.md) |
 | notification | `NotificationList`, `notification_stacks` | Done (batch 3) | [notifications](gpui-kit/notifications.md) |
 | number-input | `number_input` | Done (batch 2) | [inputs](gpui-kit/inputs.md) |
 | otp-input | `otp_input` | Done (batch 2) | [inputs](gpui-kit/inputs.md) |
@@ -182,7 +182,7 @@ exists; **Planned** — scheduled for the named batch. Per-group details live in
 | plot | — | Planned (batch 9) |  |
 | popover | `popover`, `popover_place` | Done (batch 3) | [popovers](gpui-kit/popovers.md) |
 | progress | `progress_bar`, `linear_progress`, `progress_circle` | Done (batch 2) | [feedback](gpui-kit/feedback.md) |
-| questionnaire | — | Planned (batch 7) |  |
+| questionnaire | `questionnaire` | Done (batch 7) | [questionnaire](gpui-kit/questionnaire.md) |
 | radio | `radio`, `radio_group` | Done (batch 2) | [choice](gpui-kit/choice.md) |
 | rating | `rating` | Done (batch 2) | [choice](gpui-kit/choice.md) |
 | resizable | `resizable_panels`, `resize_handle` | Done (batch 6) | [panels](gpui-kit/panels.md) |
@@ -195,7 +195,7 @@ exists; **Planned** — scheduled for the named batch. Per-group details live in
 | sidebar | `sidebar`, `sidebar_toggle_button` | Done (batch 6) | Groups, nested items, icon rail; [sidebar](gpui-kit/sidebar.md) |
 | skeleton | `skeleton` | Done (batch 1) |  |
 | slider | `slider` | Existing | Feature audit pending |
-| speech | — | Planned (batch 7) | Needs platform speech recognition |
+| speech | `speech_button`, `SpeechSession`, `SpeechRecognizer` | Done (batch 7) | macOS recognizer in bundled apps; elsewhere apps plug one in; [speech](gpui-kit/speech.md) |
 | spinner | `loading_spinner` | Done (batch 2) | `spinner` is ui2's selection control; [feedback](gpui-kit/feedback.md) |
 | status-bar | `status_bar` | Done (batch 6) | [bars](gpui-kit/bars.md) |
 | stepper | `stepper` | Done (batch 2) | [choice](gpui-kit/choice.md) |

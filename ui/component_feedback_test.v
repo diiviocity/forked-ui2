@@ -393,8 +393,9 @@ fn test_loading_spinner_kinds_sizes_and_colors() {
 	for dot in box.children {
 		assert animation_info(dot.id).status == .running
 	}
-	head := feedback_test_at(dots, box.children[0].id, 400)
-	// Halfway round, the dot opposite twelve o'clock is the head.
+	// Halfway round, the dot opposite twelve o'clock is the head. Each dot's clock
+	// started when it was built, which can be a tick after the first one's.
+	head := feedback_test_at(dots, box.children[4].id, 400)
 	opposite := feedback_test_find(head, box.children[4].id) or { panic('missing part') }
 	assert opposite.box.bg == theme.muted_foreground
 	ring := loading_spinner(

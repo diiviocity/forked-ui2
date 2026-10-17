@@ -6,6 +6,7 @@ module ui2
 $if !ui2_custom_rendering ? {
 
 import encoding.base64
+import math
 import macos
 import os
 import time
@@ -28,6 +29,16 @@ struct C.ui2_macos_rect {
 fn C.ui2_macos_msg_rect_rect(obj voidptr, sel voidptr, rect C.ui2_macos_rect) C.ui2_macos_rect
 
 fn C.ui2_macos_msg_super_void_id(obj voidptr, superclass voidptr, sel voidptr, arg voidptr)
+
+fn C.ui2_macos_msg_super_rect_rect(obj voidptr, superclass voidptr, sel voidptr, rect C.ui2_macos_rect) C.ui2_macos_rect
+
+fn C.ui2_macos_msg_super_cell_edit(obj voidptr, superclass voidptr, sel voidptr, rect C.ui2_macos_rect, view voidptr, editor voidptr, delegate voidptr, event voidptr)
+
+fn C.ui2_macos_msg_super_cell_select(obj voidptr, superclass voidptr, sel voidptr, rect C.ui2_macos_rect, view voidptr, editor voidptr, delegate voidptr, start i64, length i64)
+
+fn C.class_getSuperclass(cls voidptr) voidptr
+
+fn C.object_getClass(obj voidptr) voidptr
 
 fn C.ui2_macos_msg_id_point(obj voidptr, sel voidptr, x f64, y f64) voidptr
 
@@ -971,6 +982,25 @@ fn ensure_runtime_classes() {
 		macos.add_method(cls, 'mouseUp:', voidptr(ui2_pointer_mouse_up), 'v@:@')
 		macos.register_class_pair(cls)
 	}
+	// Text field cells that can draw without a bezel: a field whose box draws its
+	// own border shows its text centered on one line and moved in by its
+	// padding_left (see native_text_cell_rect).
+	rect_type := '{CGRect={CGPoint=dd}{CGSize=dd}}'
+	for name, base in {
+		'UI2TextFieldCell':       'NSTextFieldCell'
+		'UI2SecureTextFieldCell': 'NSSecureTextFieldCell'
+	} {
+		if macos.get_class(name) == unsafe { nil } {
+			cls := macos.allocate_class_pair(macos.get_class(base), name)
+			macos.add_method(cls, 'drawingRectForBounds:', voidptr(ui2_text_cell_drawing_rect),
+				'${rect_type}@:${rect_type}')
+			macos.add_method(cls, 'editWithFrame:inView:editor:delegate:event:', voidptr(ui2_text_cell_edit),
+				'v@:${rect_type}@@@@')
+			macos.add_method(cls, 'selectWithFrame:inView:editor:delegate:start:length:',
+				voidptr(ui2_text_cell_select), 'v@:${rect_type}@@@qq')
+			macos.register_class_pair(cls)
+		}
+	}
 	if macos.get_class('UI2AppDelegate') == unsafe { nil } {
 		cls := macos.allocate_class_pair(macos.get_class('NSObject'), 'UI2AppDelegate')
 		macos.add_method(cls, 'applicationDidFinishLaunching:', voidptr(ui2_app_did_finish_launching), 'v@:@')
@@ -1211,6 +1241,13 @@ fn render_element(parent NativeView, el Element, key string, mut active map[stri
 			clip := macos.msg_id(native, 'contentView')
 			if el.id.len > 0 {
 				st.scroll_ids[u64(voidptr(clip))] = el.id
+				// Sizing the document below can move the clip view, and the scroll it
+				// reports is read back by id, so the id has to lead to this view from
+				// here, not only once the element is done: a scroll that changed its
+				// id read back 0 for that first report.
+				st.views[el.id] = native
+				st.view_keys[el.id] = key
+				st.view_kinds[el.id] = el.kind
 			}
 			if u64(voidptr(clip)) !in st.observed {
 				st.observed[u64(voidptr(clip))] = true
@@ -1465,7 +1502,7 @@ fn native_update_element(native NativeView, el Element, declared_text_changed bo
 		.text_field {
 			native_update_text_field(native, element_rect(el.frame), el.placeholder, el.text,
 				el.box, el.text_style.color, el.text_style.size,
-				declared_text_changed, el.readonly, el.enabled, el.text_style.align)
+				declared_text_changed, el.readonly, el.enabled, el.text_style.align, el.padding_left)
 		}
 		.text_area {
 			native_update_text_area(native, el, declared_text_changed, content_changed)
@@ -2378,7 +2415,22 @@ fn native_place_label_text(label_view NativeView, frame NativeRect, lines int, v
 	} else {
 		frame
 	})
-	native_apply_label_valign(label_view, frame, lines, valign, boxed)
+	mut drawn_lines := lines
+	if lines != 1 && native_label_fits_one_line(label_view, frame) {
+		// Text that may wrap but needs one line at this width is drawn as one line.
+		// Left to wrap, a centered field barely wider than its text drew it twice,
+		// at two letter spacings, as if laid out once wrapped and once not.
+		native_apply_line_limit(label_view, 1)
+		macos.msg_void_i64(label_view, 'setMaximumNumberOfLines:', 1)
+		drawn_lines = 1
+	}
+	native_apply_label_valign(label_view, frame, drawn_lines, valign, boxed)
+}
+
+fn native_label_fits_one_line(label_view NativeView, frame NativeRect) bool {
+	wrapped := native_label_content_height(label_view, frame, 0)
+	single := native_label_content_height(label_view, frame, 1)
+	return wrapped > 0 && single > 0 && wrapped <= single + 0.5
 }
 
 // A text field draws its content from the top of its frame however tall that frame
@@ -2752,12 +2804,21 @@ fn native_new_text_field(el Element) NativeView {
 	frame := element_rect(el.frame)
 	cls := if el.secure { 'NSSecureTextField' } else { 'NSTextField' }
 	field := macos.msg_id_rect(macos.alloc(cls), 'initWithFrame:', appkit_rect(frame))
+	cell_class := if el.secure { 'UI2SecureTextFieldCell' } else { 'UI2TextFieldCell' }
+	if macos.get_class(cell_class) != unsafe { nil } {
+		cell := macos.msg_id1(macos.alloc(cell_class), 'initTextCell:', macos.nsstring(''))
+		macos.msg_void_bool(cell, 'setScrollable:', true)
+		macos.msg_void_bool(cell, 'setWraps:', false)
+		macos.msg_void_bool(cell, 'setUsesSingleLineMode:', true)
+		macos.msg_void1(field, 'setCell:', cell)
+		macos.release(cell)
+	}
 	native_update_text_field(field, frame, el.placeholder, el.text, el.box, el.text_style.color,
-		el.text_style.size, true, el.readonly, el.enabled, el.text_style.align)
+		el.text_style.size, true, el.readonly, el.enabled, el.text_style.align, el.padding_left)
 	return field
 }
 
-fn native_update_text_field(field NativeView, frame NativeRect, placeholder string, text string, box BoxStyle, text_hex u32, size f64, declared_text_changed bool, readonly bool, enabled bool, align Align) {
+fn native_update_text_field(field NativeView, frame NativeRect, placeholder string, text string, box BoxStyle, text_hex u32, size f64, declared_text_changed bool, readonly bool, enabled bool, align Align, padding_left f64) {
 	native_set_frame(field, frame)
 	// Unrelated refreshes preserve native edits. A changed declaration remains
 	// controlled and is applied explicitly.
@@ -2768,18 +2829,112 @@ fn native_update_text_field(field NativeView, frame NativeRect, placeholder stri
 	macos.msg_void1(field, 'setTextColor:', native_color(text_hex))
 	macos.msg_void1(field, 'setFont:', native_font(size, false, false))
 	macos.msg_void_i64(field, 'setAlignment:', native_text_alignment(align_value(align)))
-	macos.msg_void_bool(field, 'setBordered:', true)
-	macos.msg_void_bool(field, 'setBezeled:', true)
-	macos.msg_void_u64(field, 'setBezelStyle:', 1)
+	// A box that draws its own border styles the field: the native bezel would
+	// draw a second frame inside it, so the field goes without one and shows
+	// the box's fill, corners and border. Otherwise AppKit's rounded bezel is
+	// the field's look.
+	styled := box_draws_border(box)
+	macos.msg_void_bool(field, 'setBordered:', !styled)
+	macos.msg_void_bool(field, 'setBezeled:', !styled)
+	if !styled {
+		macos.msg_void_u64(field, 'setBezelStyle:', 1)
+	}
+	native_text_cell_set_padding(field, padding_left)
 	draws_background := box_draws_fill(box)
-	macos.msg_void_bool(field, 'setDrawsBackground:', draws_background)
-	if draws_background {
-		macos.msg_void1(field, 'setBackgroundColor:', native_color(box.bg))
+	if styled {
+		// Without a bezel the cell fills only the line of text it draws, so the
+		// view's layer paints the box: fill and corners, under the border.
+		macos.msg_void_bool(field, 'setDrawsBackground:', false)
+		native_set_box_background(field, box)
+		native_set_box_corners(field, box)
+	} else {
+		macos.msg_void_bool(field, 'setDrawsBackground:', draws_background)
+		if draws_background {
+			macos.msg_void1(field, 'setBackgroundColor:', native_color(box.bg))
+		}
+		if macos.msg_bool(field, 'wantsLayer') {
+			// It was styled before: its layer no longer paints a box.
+			native_set_box_background(field, BoxStyle{
+				transparent: true
+			})
+		}
 	}
 	native_match_appearance(field, box, text_hex)
 	macos.msg_void_bool(field, 'setEditable:', !readonly && enabled)
 	macos.msg_void_bool(field, 'setSelectable:', true)
 	macos.msg_void_bool(field, 'setEnabled:', enabled)
+}
+
+// The superclass of a ui2 text field cell, which its overrides pass on to.
+fn native_text_cell_superclass(cell voidptr) voidptr {
+	return C.class_getSuperclass(C.object_getClass(cell))
+}
+
+fn native_text_cell_padding_key() voidptr {
+	return voidptr(macos.sel('ui2_cell_padding_assoc'))
+}
+
+fn native_text_cell_set_padding(field NativeView, padding f64) {
+	cell := macos.msg_id(field, 'cell')
+	if native_is_nil(cell) {
+		return
+	}
+	number := macos.msg_id_f64(macos.get_class('NSNumber'), 'numberWithDouble:', padding)
+	native_set_associated_object(cell, native_text_cell_padding_key(), number)
+}
+
+// native_text_cell_rect is where a field without a bezel draws and edits its
+// text: one line tall, centered in the field, and moved in by its
+// padding_left. A bezeled field keeps the rectangle AppKit gives it.
+fn native_text_cell_rect(cell voidptr, rect C.ui2_macos_rect) C.ui2_macos_rect {
+	if macos.msg_bool(macos.Id(cell), 'isBezeled') {
+		return rect
+	}
+	number := macos.get_associated_object(macos.Id(cell), native_text_cell_padding_key())
+	padding := if native_is_nil(number) { 0.0 } else { macos.msg_f64(number, 'doubleValue') }
+	mut height := rect.height
+	font := macos.msg_id(macos.Id(cell), 'font')
+	if !native_is_nil(font) {
+		line := math.ceil(macos.msg_f64(font, 'ascender') - macos.msg_f64(font, 'descender') +
+			macos.msg_f64(font, 'leading'))
+		if line > 0 && line < rect.height {
+			height = line
+		}
+	}
+	return C.ui2_macos_rect{
+		x:      rect.x + padding
+		y:      rect.y + (rect.height - height) / 2
+		width:  math.max(rect.width - padding * 2, 0)
+		height: height
+	}
+}
+
+@[export: 'ui2_text_cell_drawing_rect']
+fn ui2_text_cell_drawing_rect(cell voidptr, cmd voidptr, bounds C.ui2_macos_rect) C.ui2_macos_rect {
+	base := C.ui2_macos_msg_super_rect_rect(cell, native_text_cell_superclass(cell), cmd,
+		bounds)
+	return native_text_cell_rect(cell, base)
+}
+
+// Editing starts in the rectangle the text is drawn in, so the caret and the
+// text do not jump when the field takes focus.
+@[export: 'ui2_text_cell_edit']
+fn ui2_text_cell_edit(cell voidptr, cmd voidptr, frame C.ui2_macos_rect, view voidptr, editor voidptr, delegate voidptr, event voidptr) {
+	C.ui2_macos_msg_super_cell_edit(cell, native_text_cell_superclass(cell), cmd, native_text_cell_edit_frame(cell,
+		frame), view, editor, delegate, event)
+}
+
+@[export: 'ui2_text_cell_select']
+fn ui2_text_cell_select(cell voidptr, cmd voidptr, frame C.ui2_macos_rect, view voidptr, editor voidptr, delegate voidptr, start i64, length i64) {
+	C.ui2_macos_msg_super_cell_select(cell, native_text_cell_superclass(cell), cmd, native_text_cell_edit_frame(cell,
+		frame), view, editor, delegate, start, length)
+}
+
+// The frame editing is given is the rectangle the text is drawn in: the field
+// editor is placed on it as it is, so the text does not move when editing
+// starts.
+fn native_text_cell_edit_frame(cell voidptr, frame C.ui2_macos_rect) C.ui2_macos_rect {
+	return native_text_cell_rect(cell, frame)
 }
 
 // native_match_appearance gives a native control the light or dark system

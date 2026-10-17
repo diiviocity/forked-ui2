@@ -78,20 +78,23 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 	// path's numbers), so a cached shape is rebuilt exactly when it changes.
 	fn shape_signature(el Element, scale f64) u64 {
 		mut h := u64(0xcbf29ce484222325)
-		mix := fn (h u64, value u64) u64 {
-			return (h ^ value) * 1099511628211
-		}
-		h = mix(h, math.f64_bits(scale))
-		h = mix(h, math.f64_bits(el.shape_style.stroke_width))
-		h = mix(h, u64(el.shape_style.line_join) << 8 | u64(el.shape_style.line_cap) << 4 | u64(el.shape_style.fill_rule))
-		h = mix(h, u64(if el.shape_style.fill != none { 1 } else { 0 }) | u64(if el.shape_style.stroke != none { 2 } else { 0 }))
+		h = shape_hash_mix(h, math.f64_bits(scale))
+		h = shape_hash_mix(h, math.f64_bits(el.shape_style.stroke_width))
+		h = shape_hash_mix(h, u64(el.shape_style.line_join) << 8 | u64(el.shape_style.line_cap) << 4 | u64(el.shape_style.fill_rule))
+		h = shape_hash_mix(h, u64(if el.shape_style.fill != none { 1 } else { 0 }) | u64(if el.shape_style.stroke != none { 2 } else { 0 }))
 		for cmd in el.path {
-			h = mix(h, u64(cmd.verb))
+			h = shape_hash_mix(h, u64(cmd.verb))
 			for value in [cmd.x, cmd.y, cmd.cx1, cmd.cy1, cmd.cx2, cmd.cy2] {
-				h = mix(h, math.f64_bits(value))
+				h = shape_hash_mix(h, math.f64_bits(value))
 			}
 		}
 		return h
+	}
+
+	// A named function rather than a closure: V's Windows C for a closure here
+	// declared one of its temporaries with the wrong function type.
+	fn shape_hash_mix(h u64, value u64) u64 {
+		return (h ^ value) * 1099511628211
 	}
 
 	// shape_fill_triangles fills one simple polygon (the usual chart shape) with

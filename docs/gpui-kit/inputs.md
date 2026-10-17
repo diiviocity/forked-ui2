@@ -38,13 +38,14 @@ handling, and `ui/component_inputs_test.v` covers the logic.
 
 ### How the frame is drawn
 
-A native field always draws its own frame: AppKit gives it a bezel and the
-custom renderer an outline, and neither can be turned off. The number input
-and the input group therefore do not hide a borderless field inside a box.
-Their field spans the full height of a shared frame (border, corner radius and
-a muted background for the addons) and keeps a one-pixel border in the theme's
-border color, which reads as the divider between the field and the parts
-beside it. OTP cells stand alone and keep the backend's own field frame.
+A field whose box declares a border draws that box on every backend (AppKit
+then goes without its native bezel); a field without one keeps the backend's
+own frame, AppKit's bezel or the custom renderer's outline. The number input
+and the input group give their field the full height of a shared frame
+(border, corner radius and a muted background for the addons) and a one-pixel
+border in the theme's border color, which reads as the divider between the
+field and the parts beside it. OTP cells stand alone and keep the backend's
+own field frame until they are marked invalid.
 
 ### Which keys reach `on_key_event` while a field has focus
 
@@ -299,7 +300,8 @@ disabled, unknown or non-button addons.
 
 ## Platform notes
 
-- AppKit text fields keep the bezel's own inset and ignore `padding_left`.
+- On AppKit `padding_left` moves the text in for fields whose box declares a
+  border; a field with the native bezel keeps the bezel's own inset.
 - Number fields use the ARIA role `spinbutton`, which AppKit has no role for, so
   VoiceOver reads them as text fields.
 

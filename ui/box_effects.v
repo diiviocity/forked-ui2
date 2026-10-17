@@ -186,3 +186,27 @@ fn box_rounded_border(box BoxStyle) f64 {
 	}
 	return box.border_left
 }
+
+// scrollbar_colors are the track and thumb the custom renderer draws a
+// scrollbar with over `backdrop`, the scroll's own background color: the light
+// grays of a light theme, or a lighter shade of a dark backdrop, so a dark
+// theme's scrollbars do not glare.
+fn scrollbar_colors(backdrop u32) (u32, u32) {
+	r := f64((backdrop >> 16) & 0xff) / 255.0
+	g := f64((backdrop >> 8) & 0xff) / 255.0
+	b := f64(backdrop & 0xff) / 255.0
+	if 0.2126 * r + 0.7152 * g + 0.0722 * b >= 0.5 {
+		return u32(0xf1f5f9), u32(0xcbd5e1)
+	}
+	return scrollbar_tint(backdrop, 0.06), scrollbar_tint(backdrop, 0.3)
+}
+
+// scrollbar_tint moves a color `amount` of the way to white.
+fn scrollbar_tint(color u32, amount f64) u32 {
+	mut out := u32(0)
+	for shift in [u32(16), 8, 0] {
+		channel := f64((color >> shift) & 0xff)
+		out |= u32(channel + (255 - channel) * amount + 0.5) << shift
+	}
+	return out
+}

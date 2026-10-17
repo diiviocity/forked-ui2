@@ -1821,7 +1821,7 @@ fn page_focused_text_area(direction int) {
 		}
 		draw_scrollbar(ctx, dropdown_state.x, dropdown_state.y, dropdown_state.width,
 			dropdown_state.height, f64(dropdown_state.options.len) * dropdown_state.row_height +
-			dropdown_popup_padding * 2, g_dropdown_scroll, false)
+			dropdown_popup_padding * 2, g_dropdown_scroll, false, 0xffffff)
 		apply_clip(ctx, window)
 	}
 
@@ -2305,12 +2305,13 @@ fn page_focused_text_area(direction int) {
 				if child_clip.width > 0 && child_clip.height > 0 {
 					apply_clip(ctx, child_clip)
 					if scrolls_y {
+						// A transparent scroll still names the color it sits on.
 						draw_scrollbar(ctx, x, y, el.frame.width, el.frame.height, content_h, scroll_y,
-							el.persistent_scrollbars)
+							el.persistent_scrollbars, el.box.bg)
 					}
 					if scrolls_x {
 						draw_scrollbar_x(ctx, frame, content_w, scroll_x, el.persistent_scrollbars,
-							beside_vertical)
+							beside_vertical, el.box.bg)
 					}
 				}
 				apply_clip(ctx, clip)
@@ -2876,8 +2877,11 @@ fn page_focused_text_area(direction int) {
 	// draw_symbol_image draws a `symbol:` image as its Material Icons glyph, as large
 	// as the frame allows and in the element's text color, which is what tints a
 	// symbol image on every backend.
+	// A Material glyph is as wide as its size. A fractional size is rounded when
+	// the font is set, which could make the glyph wider than its frame and have
+	// it cut down to an ellipsis, so symbols are sized in whole points.
 	fn draw_symbol_image(ctx &gg.Context, name string, x f64, y f64, width f64, height f64, color u32) {
-		size := math.min(width, height)
+		size := math.floor(math.min(width, height))
 		if size <= 0 {
 			return
 		}
@@ -2894,7 +2898,7 @@ fn page_focused_text_area(direction int) {
 			draw_text_centered(ctx, symbol, x, y, width, height, TextStyle{
 				...style
 				font_family: 'Material Icons'
-				size:        math.max(math.min(width, height) * 0.75, 8.0)
+				size:        math.floor(math.max(math.min(width, height) * 0.75, 8.0))
 			})
 			return
 		}
@@ -3347,22 +3351,24 @@ fn page_focused_text_area(direction int) {
 			f32(center_y - 2), pen)
 	}
 
-	fn draw_scrollbar(ctx &gg.Context, x f64, y f64, width f64, height f64, content_height f64, offset f64, persistent bool) {
+	fn draw_scrollbar(ctx &gg.Context, x f64, y f64, width f64, height f64, content_height f64, offset f64, persistent bool, backdrop u32) {
 		bar := scrollbar_geometry(rect(x, y, width, height), content_height, offset, persistent)
 		if bar.track.width <= 0 || bar.track.height <= 0 {
 			return
 		}
-		draw_rect(ctx, bar.track.x, bar.track.y, bar.track.width, bar.track.height, 0xf1f5f9, 2.5)
-		draw_rect(ctx, bar.thumb.x, bar.thumb.y, bar.thumb.width, bar.thumb.height, 0xcbd5e1, 2.5)
+		track, thumb := scrollbar_colors(backdrop)
+		draw_rect(ctx, bar.track.x, bar.track.y, bar.track.width, bar.track.height, track, 2.5)
+		draw_rect(ctx, bar.thumb.x, bar.thumb.y, bar.thumb.width, bar.thumb.height, thumb, 2.5)
 	}
 
-	fn draw_scrollbar_x(ctx &gg.Context, frame Rect, content_width f64, offset f64, persistent bool, beside_vertical bool) {
+	fn draw_scrollbar_x(ctx &gg.Context, frame Rect, content_width f64, offset f64, persistent bool, beside_vertical bool, backdrop u32) {
 		bar := scrollbar_geometry_x(frame, content_width, offset, persistent, beside_vertical)
 		if bar.track.width <= 0 || bar.track.height <= 0 {
 			return
 		}
-		draw_rect(ctx, bar.track.x, bar.track.y, bar.track.width, bar.track.height, 0xf1f5f9, 2.5)
-		draw_rect(ctx, bar.thumb.x, bar.thumb.y, bar.thumb.width, bar.thumb.height, 0xcbd5e1, 2.5)
+		track, thumb := scrollbar_colors(backdrop)
+		draw_rect(ctx, bar.track.x, bar.track.y, bar.track.width, bar.track.height, track, 2.5)
+		draw_rect(ctx, bar.thumb.x, bar.thumb.y, bar.thumb.width, bar.thumb.height, thumb, 2.5)
 	}
 
 	// text_font_file resolves a declared family to the file fontstash has to

@@ -92,3 +92,15 @@ fn test_zero_lines_reach_the_renderers_as_unlimited() {
 	assert root.children[1].text_style.lines == 1
 	assert root.children[2].text_style.lines == text_lines_unlimited
 }
+
+fn test_scrollbar_colors_follow_a_dark_backdrop() {
+	// Light backdrops keep the familiar light grays.
+	track, thumb := scrollbar_colors(0xffffff)
+	assert track == 0xf1f5f9 && thumb == 0xcbd5e1
+	// A dark backdrop gets lighter shades of itself, the thumb lighter than the track.
+	dark_track, dark_thumb := scrollbar_colors(0x0f172a)
+	assert dark_track != 0xf1f5f9
+	assert (dark_track & 0xff) > 0x2a && (dark_thumb & 0xff) > (dark_track & 0xff)
+	assert scrollbar_tint(0x000000, 1.0) == 0xffffff
+	assert scrollbar_tint(0x102030, 0) == 0x102030
+}

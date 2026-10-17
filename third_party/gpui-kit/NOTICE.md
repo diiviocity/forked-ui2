@@ -1,8 +1,9 @@
 # GPUI Kit attribution
 
 Source: https://github.com/longbridge/gpui-kit
-Revisions: `1b6059c13315dc5c304759ad3aa666e0b6e301d8` (batch 1) and
-`f8cf0bd964f9ef2e5b7be79f3a8fc391371feb4a` (later batches)
+Revisions: `1b6059c13315dc5c304759ad3aa666e0b6e301d8` (batch 1),
+`f8cf0bd964f9ef2e5b7be79f3a8fc391371feb4a` (later batches) and `d4c56812`
+(speech)
 Copyright 2024 - 2026 Longbridge <https://longbridge.com>
 
 These files adapt GPUI Kit logic or tests and are distributed under
@@ -37,6 +38,13 @@ Each carries an SPDX header naming it.
 | `ui/component_form_test.v` | Label-orientation and hidden-field cases from `crates/component/src/form/tests.rs`, beside new tests. |
 | `ui/component_settings.v` | The search selection (`SettingsFilter::selected_index`), search matching (`SettingItem::is_match`) and Reset-all scope (`SettingGroup::reset`) of `crates/component/src/setting/`. |
 | `ui/component_settings_test.v` | Search-selection, footer and search-reset scenarios from `crates/component/src/setting/tests.rs`, beside new tests. |
+| `ui/component_attachments.v` | The size geometry, status inheritance, retry and progress rules, scrim strengths and corner-control metrics of `crates/component/src/attachment.rs`. |
+| `ui/component_attachments_test.v` | Status-rule cases from the same file, beside new tests. |
+| `ui/component_questionnaire.v` | The schema checks, answer and status rules, validation order, completion and submit events, navigation and choose/confirm behaviour of `crates/base/src/questionnaire/state.rs` and `types.rs`. |
+| `ui/component_questionnaire_input.v` | The key rules and focus order of `crates/base/src/questionnaire/keyboard.rs` and `state.rs`. |
+| `ui/component_speech.v` | The session lifecycle and level meter of `crates/component/src/speech/state.rs` and `level.rs`, and the phrase spacing and utterance-restart check of `system/macos.rs`. |
+| `ui/speech.v` | The recognition result handling of `crates/component/src/speech/system/macos.rs`. |
+| `ui/component_speech_test.v` | Phrase-spacing and utterance-reset cases from `system/macos.rs`, beside new tests. |
 
 Every other component implementation is new V code following the GPUI Kit
 catalog's documented concepts, not copied Rust. It, the examples and the

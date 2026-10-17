@@ -154,3 +154,44 @@ static inline void ui2_macos_set_shape_path(void* layer, const double* commands,
 	((void (*)(void*, void*, void*))objc_msgSend)(layer, sel_registerName("setPath:"), path);
 	release(path);
 }
+
+// -[NSCell drawingRectForBounds:] sent to the superclass, for the text field cell
+// ui2 subclasses: it takes and answers a rectangle (see ui2_macos_msg_rect_rect).
+static inline ui2_macos_rect ui2_macos_msg_super_rect_rect(void* obj, void* superclass,
+		void* sel, ui2_macos_rect rect) {
+	struct {
+		void* receiver;
+		void* super_class;
+	} target = { obj, superclass };
+#if defined(__x86_64__)
+	ui2_macos_rect result;
+	((void (*)(ui2_macos_rect*, void*, void*, ui2_macos_rect))objc_msgSendSuper_stret)(&result,
+		&target, sel, rect);
+	return result;
+#else
+	return ((ui2_macos_rect (*)(void*, void*, ui2_macos_rect))objc_msgSendSuper)(&target, sel, rect);
+#endif
+}
+
+// -[NSTextFieldCell editWithFrame:inView:editor:delegate:event:] to the superclass.
+static inline void ui2_macos_msg_super_cell_edit(void* obj, void* superclass, void* sel,
+		ui2_macos_rect rect, void* view, void* editor, void* delegate, void* event) {
+	struct {
+		void* receiver;
+		void* super_class;
+	} target = { obj, superclass };
+	((void (*)(void*, void*, ui2_macos_rect, void*, void*, void*, void*))objc_msgSendSuper)(
+		&target, sel, rect, view, editor, delegate, event);
+}
+
+// -[NSTextFieldCell selectWithFrame:inView:editor:delegate:start:length:] to the
+// superclass.
+static inline void ui2_macos_msg_super_cell_select(void* obj, void* superclass, void* sel,
+		ui2_macos_rect rect, void* view, void* editor, void* delegate, long start, long length) {
+	struct {
+		void* receiver;
+		void* super_class;
+	} target = { obj, superclass };
+	((void (*)(void*, void*, ui2_macos_rect, void*, void*, void*, long, long))objc_msgSendSuper)(
+		&target, sel, rect, view, editor, delegate, start, length);
+}
