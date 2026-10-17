@@ -258,7 +258,9 @@ fn native_accessibility_role(role string) macos.Id {
 		'image', 'img' { macos.nsstring('AXImage') }
 		// Structural roles have no AppKit counterpart of their own; VoiceOver reads
 		// them as groups. A tree is one too: an outline needs rows AppKit can walk.
-		'group', 'navigation', 'status', 'alert', 'dialog', 'tree' { macos.nsstring('AXGroup') }
+		'group', 'navigation', 'status', 'alert', 'dialog', 'alertdialog', 'tree' {
+			macos.nsstring('AXGroup')
+		}
 		'separator' { macos.nsstring('AXSplitter') }
 		'link' { macos.nsstring('AXLink') }
 		'slider' { macos.nsstring('AXSlider') }

@@ -208,3 +208,15 @@ fn component_finish(el Element) !Element {
 	validate_element_tree(el)!
 	return el
 }
+
+// component_popup_shadow is the drop shadow a floating surface casts: popovers,
+// menus, hover cards, dialogs and sheets, as GPUI Kit's popups do.
+pub fn component_popup_shadow() BoxShadow {
+	return box_shadow(0x000000, 0.16, 24, 8)
+}
+
+// component_card_shadow is the lighter shadow of a surface that floats closer to
+// the page, such as a notification.
+pub fn component_card_shadow() BoxShadow {
+	return box_shadow(0x000000, 0.12, 16, 4)
+}

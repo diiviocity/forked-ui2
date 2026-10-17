@@ -3024,7 +3024,7 @@ fn page_focused_text_area(direction int) {
 			draw_rect_alpha(ctx, sx, sy, sw, sh, shadow.color, opacity, sr)
 			return
 		}
-		steps := int(math.min(math.max(blur / 3 + 2, 3), 6))
+		steps := int(math.min(math.max(blur / 2 + 2, 3), 10))
 		per_layer := 1 - math.pow(1 - opacity, 1.0 / f64(steps))
 		for i in 0 .. steps {
 			grow := blur / 2 - blur * f64(i) / f64(steps - 1)

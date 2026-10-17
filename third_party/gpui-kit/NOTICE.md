@@ -19,6 +19,10 @@ Each carries an SPDX header naming it.
 | `ui/component_feedback_progress.v` | Size presets, the track opacity, the stroke formula, both loading curves and the reduced-motion inset of `crates/component/src/progress/progress.rs` and `progress_circle.rs`. |
 | `ui/component_feedback_shimmer.v` | Spread clamping, band center and padding, layered widths and the highlight-color rule of `crates/component/src/shimmer.rs`. |
 | `ui/component_feedback_test.v` | Shimmer spread, band and highlight cases from the same file, beside new tests. |
+| `ui/component_popovers_position.v` | The side choice (preferred, else opposite, else roomier), alignment and clamping of `crates/base/src/positioner.rs`, and the arrow's corner clearance of `crates/component/src/popover.rs`. |
+| `ui/component_popovers.v` | The hover-card timing rules of `crates/base/src/hover_card.rs`. |
+| `ui/component_popovers_menu.v` | The keyboard navigation rules of `crates/component/src/menu/popup_menu.rs`. |
+| `ui/component_popovers_test.v` | Placement cases from upstream's positioner tests, beside new tests. |
 
 Every other component implementation is new V code following the GPUI Kit
 catalog's documented concepts, not copied Rust. It, the examples and the

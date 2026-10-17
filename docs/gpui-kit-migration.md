@@ -134,7 +134,7 @@ exists; **Planned** — scheduled for the named batch. Per-group details live in
 | GPUI Kit | ui2 | Status | Notes |
 | --- | --- | --- | --- |
 | accordion | `accordion` | Existing | Feature audit pending |
-| alert-dialog | — | Planned (batch 3) | In-window dialog; native `confirm` exists |
+| alert-dialog | `alert_dialog` | Done (batch 3) | Native `confirm` also exists; [dialogs](gpui-kit/dialogs.md) |
 | alert | `inline_alert` | Done (batch 1) |  |
 | attachment | — | Planned (batch 7) |  |
 | avatar | `avatar` | Partial | Avatar group in batch 2 |
@@ -145,7 +145,7 @@ exists; **Planned** — scheduled for the named batch. Per-group details live in
 | carousel | `carousel` | Existing | Feature audit pending |
 | chart | `chart` | Partial | Line, bar, scatter, pie, doughnut; area, candlestick, radar, sankey, stacking in batch 9 |
 | checkbox | `checkbox` | Existing | Feature audit pending |
-| clipboard | — | Planned (batch 3) | `set_clipboard_text`/`clipboard_text` exist |
+| clipboard | `clipboard_button`, `copyable_text` | Done (batch 3) | [notifications](gpui-kit/notifications.md) |
 | collapsible | `collapsible` | Done (batch 1) |  |
 | color-picker | — | Planned (batch 4) |  |
 | combobox | — | Planned (batch 5) |  |
@@ -153,16 +153,16 @@ exists; **Planned** — scheduled for the named batch. Per-group details live in
 | data-table | — | Planned (batch 5) |  |
 | date-picker | — | Planned (batch 4) |  |
 | description-list | `description_list` | Done (batch 1) |  |
-| dialog | `modal_view`, `popup` | Partial | Structured dialog in batch 3 |
+| dialog | `modal_dialog`, `modal_view`, `popup` | Done (batch 3) | [dialogs](gpui-kit/dialogs.md) |
 | diff | — | Planned (batch 8) |  |
 | dock | — | Planned (batch 6) |  |
-| dropdown_button | — | Planned (batch 3) | Needs dropdown menu |
+| dropdown_button | `dropdown_button` | Done (batch 3) | [popovers](gpui-kit/popovers.md) |
 | editor | `text_editor`, `text_area` | Partial | Code-editor features in batch 8 |
 | empty | `empty_state` | Done (batch 1) |  |
-| focus-trap | — | Planned (batch 3) |  |
+| focus-trap | `focus_trap_next`, `FocusTrap` | Done (batch 3) | [dialogs](gpui-kit/dialogs.md) |
 | form | — | Planned (batch 6) |  |
 | group-box | `group_box` | Done (batch 1) |  |
-| hover-card | — | Planned (batch 3) |  |
+| hover-card | `hover_card`, `HoverCardState` | Done (batch 3) | [popovers](gpui-kit/popovers.md) |
 | icon | `named_icon`, `IconName`, `symbol:` images | Done (batch 2) | [feedback](gpui-kit/feedback.md) |
 | image | `image` | Existing | Feature audit pending |
 | index | — | Not applicable | Upstream documentation landing page |
@@ -172,15 +172,15 @@ exists; **Planned** — scheduled for the named batch. Per-group details live in
 | label | `label` | Existing |  |
 | list | — | Planned (batch 5) |  |
 | marker | — | Planned (batch 7) |  |
-| menu | `set_menu_bar`, `Element.menu`, tray | Partial | Dropdown/popup menus in batch 3 |
+| menu | `dropdown_menu`, `set_menu_bar`, `Element.menu`, tray | Done (batch 3) | Dropdown/popup menus with submenus; [popovers](gpui-kit/popovers.md) |
 | message-scroller | — | Planned (batch 7) |  |
 | message | — | Planned (batch 7) |  |
-| notification | — | Planned (batch 3) | `after` timers exist |
+| notification | `NotificationList`, `notification_stacks` | Done (batch 3) | [notifications](gpui-kit/notifications.md) |
 | number-input | `number_input` | Done (batch 2) | [inputs](gpui-kit/inputs.md) |
 | otp-input | `otp_input` | Done (batch 2) | [inputs](gpui-kit/inputs.md) |
 | pagination | `pagination` | Done (batch 1) |  |
 | plot | — | Planned (batch 9) |  |
-| popover | — | Planned (batch 3) |  |
+| popover | `popover`, `popover_place` | Done (batch 3) | [popovers](gpui-kit/popovers.md) |
 | progress | `progress_bar`, `linear_progress`, `progress_circle` | Done (batch 2) | [feedback](gpui-kit/feedback.md) |
 | questionnaire | — | Planned (batch 7) |  |
 | radio | `radio`, `radio_group` | Done (batch 2) | [choice](gpui-kit/choice.md) |
@@ -190,7 +190,7 @@ exists; **Planned** — scheduled for the named batch. Per-group details live in
 | scrollable | `scroll` | Existing |  |
 | select | `dropdown`, `spinner` | Partial | Searchable select in batch 5 |
 | settings | — | Planned (batch 6) |  |
-| sheet | — | Planned (batch 3) |  |
+| sheet | `sheet` | Done (batch 3) | [dialogs](gpui-kit/dialogs.md) |
 | shimmer | `shimmer`, `shimmer_text` | Done (batch 2) | [feedback](gpui-kit/feedback.md) |
 | sidebar | — | Planned (batch 6) |  |
 | skeleton | `skeleton` | Done (batch 1) |  |
