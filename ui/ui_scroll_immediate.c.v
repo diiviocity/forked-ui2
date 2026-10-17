@@ -15,6 +15,14 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 		end   int
 	}
 
+	// TextAreaRunSpan is a text run resolved to the runes of the shown text it
+	// styles, end exclusive.
+	struct TextAreaRunSpan {
+		start int
+		end   int
+		style TextStyle
+	}
+
 	fn reset_scroll_frame() {
 		g_scroll_areas = map[string]Rect{}
 		g_scroll_viewports = map[string]Rect{}
@@ -523,6 +531,101 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 		return first, last
 	}
 
+	// text_area_run_spans resolves a rich text area's runs against the text being
+	// shown. Runs style consecutive stretches from the start, as AppKit applies
+	// them. Text edited since the runs were declared no longer matches them, and
+	// is drawn plain until the application declares runs for it.
+	fn text_area_run_spans(runs []TextRun, value string) []TextAreaRunSpan {
+		mut spans := []TextAreaRunSpan{cap: runs.len}
+		mut byte_pos := 0
+		mut rune_pos := 0
+		for run in runs {
+			if run.text.len == 0 {
+				continue
+			}
+			end := byte_pos + run.text.len
+			if end > value.len || value[byte_pos..end] != run.text {
+				return []TextAreaRunSpan{}
+			}
+			count := run.text.len_utf8()
+			spans << TextAreaRunSpan{
+				start: rune_pos
+				end: rune_pos + count
+				style: run.style
+			}
+			byte_pos = end
+			rune_pos += count
+		}
+		return spans
+	}
+
+	fn text_area_run_cfg(style TextStyle) gg.TextCfg {
+		family := text_font_file(style.font_family, style.bold, style.italic)
+		return gg.TextCfg{
+			color: hex_color(style.color)
+			size: int(font_render_size(style.size, text_font_metrics(family)) + 0.5)
+			bold: style.bold
+			italic: style.italic
+			family: family
+			align: .left
+			vertical_align: .middle
+		}
+	}
+
+	// draw_text_area_run_line draws one wrapped line of a rich text area run by
+	// run, starting at `left`. Stretches no run covers keep the base style.
+	fn draw_text_area_run_line(ctx &gg.Context, line string, line_start int, spans []TextAreaRunSpan, base TextStyle, left f64, y f64, line_height f64) {
+		runes := line.runes()
+		// The first span that ends after the line starts.
+		mut k := 0
+		mut lo, mut hi := 0, spans.len
+		for lo < hi {
+			mid := (lo + hi) / 2
+			if spans[mid].end <= line_start {
+				lo = mid + 1
+			} else {
+				hi = mid
+			}
+		}
+		k = lo
+		mut x := left
+		mut i := 0
+		for i < runes.len {
+			pos := line_start + i
+			mut style := base
+			mut j := runes.len
+			if k < spans.len && spans[k].start <= pos {
+				style = spans[k].style
+				j = math.min(runes.len, spans[k].end - line_start)
+			} else if k < spans.len {
+				j = math.min(runes.len, spans[k].start - line_start)
+			}
+			if j <= i {
+				j = i + 1
+			}
+			segment := runes[i..j].string()
+			cfg := text_area_run_cfg(style)
+			ensure_family_fallbacks(ctx, cfg.family)
+			ctx.set_text_cfg(cfg)
+			width := f64(ctx.text_width_f(segment))
+			if style.background_color != 0 {
+				draw_rect(ctx, x, y - line_height / 2, width, line_height, style.background_color, 0)
+			}
+			ctx.draw_text(int(x), int(y), segment, cfg)
+			if style.underline || style.strikethrough {
+				draw_text_decorations(ctx, segment, x, y, cfg, TextStyle{
+					...style
+					align: .left
+				})
+			}
+			x += width
+			i = j
+			if k < spans.len && line_start + i >= spans[k].end {
+				k++
+			}
+		}
+	}
+
 	fn draw_text_area_content(ctx &gg.Context, el Element, value string, x f64, y f64, clip Rect, scroll_parent_id string) {
 		frame := rect(x, y, el.frame.width, el.frame.height)
 		content := text_area_content_rect(frame, el.padding_left, !el.disable_scroll)
@@ -543,6 +646,7 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 			return f64(ctx.text_width_f(line))
 		})
 		line_ranges := text_area_line_rune_ranges(value, lines)
+		spans := text_area_run_spans(el.text_runs, value)
 		editor := g_text_editors[el.id] or { text_editor(value.clone()) }
 		selection_start, selection_end := editor.selection.ordered()
 		show_selection := g_focused_field == el.id && selection_start != selection_end
@@ -579,7 +683,16 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 							f64(ctx.text_width_f(selected)), line_height, 0xb8d7ff, 0)
 					}
 				}
-				ctx.draw_text(int(text_x), int(text_y), lines[index], cfg)
+				if spans.len > 0 && index < line_ranges.len {
+					ctx.set_text_cfg(cfg)
+					line_origin := text_field_aligned_text_origin(content.x, content.width,
+						f64(ctx.text_width_f(lines[index])), style.align)
+					draw_text_area_run_line(ctx, lines[index], line_ranges[index].start, spans,
+						style, line_origin, text_y, line_height)
+					ctx.set_text_cfg(cfg)
+				} else {
+					ctx.draw_text(int(text_x), int(text_y), lines[index], cfg)
+				}
 			}
 		}
 		pane_clip := intersect_rect(frame, clip)

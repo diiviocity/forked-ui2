@@ -620,8 +620,14 @@ fn native_text_view_set_background_color(tv_ptr macos.Id, color u32) {
 	if selected.length == 0 { native_apply_typing_color(tv, color, true) } else { native_apply_range_color(tv, selected, color, true) }
 }
 
+// Declared text and runs get their effects here. Unlike the effect command,
+// which selects what it styled, this leaves the selection where it was: the
+// last run of a rich text area used to come up selected.
 fn native_text_view_add_effect(tv macos.Id, location u64, length u64, effect int) {
-	if !objc_is_nil(tv) && length > 0 { native_apply_range_effect(tv, macos.range(location, length), effect) }
+	if objc_is_nil(tv) || length == 0 { return }
+	selected := native_text_view_selected_range(tv)
+	native_apply_range_effect(tv, macos.range(location, length), effect)
+	macos.msg_void_range(tv, 'setSelectedRange:', selected)
 }
 
 fn native_text_view_set_effect(tv_ptr macos.Id, effect int) {

@@ -383,6 +383,8 @@ pub:
 	focused               bool
 	text_selection         TextSelection
 	text_runs             []TextRun // text_area: optional rich text style runs
+	path                  []PathCommand // view: a vector path drawn in the frame (see `shape`)
+	shape_style           ShapeStyle // view: how `path` is filled and stroked
 	keyboard              int
 	emit_change           bool
 	long_press            bool

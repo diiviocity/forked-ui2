@@ -140,6 +140,8 @@ fn C.ui2_win_combo_select_text(hwnd voidptr, text &u16)
 
 fn C.ui2_win_create_font(hwnd voidptr, point_size f64, family &u16, bold int, italic int, underline int, strikeout int, text &u16) voidptr
 
+fn C.ui2_win_measure_text(hwnd voidptr, point_size f64, family &u16, bold int, italic int, text &u16) f64
+
 fn C.ui2_win_apply_text_font(hwnd voidptr, text &u16)
 
 fn C.ui2_win_font_missing_glyphs(font voidptr, text &u16) int
@@ -166,9 +168,24 @@ struct C.ui2_win_mesh_vertex {
 	color u32
 }
 
-fn C.ui2_win_paint_background_fx(hwnd voidptr, background u32, radius f64, transparent int, border_color u32, border_left f64, border_top f64, border_right f64, border_bottom f64, opacity f64, vertices &C.ui2_win_mesh_vertex, vertex_count int, triangles &u32, triangle_count int)
+fn C.ui2_win_paint_background_fx(hwnd voidptr, background u32, radius f64, transparent int, border_color u32, border_left f64, border_top f64, border_right f64, border_bottom f64, opacity f64, vertices &C.ui2_win_mesh_vertex, vertex_count int, triangles &u32, triangle_count int, shape &C.ui2_win_shape)
 
-fn C.ui2_win_paint_background_into_fx(hwnd voidptr, dc voidptr, background u32, radius f64, transparent int, border_color u32, border_left f64, border_top f64, border_right f64, border_bottom f64, opacity f64, vertices &C.ui2_win_mesh_vertex, vertex_count int, triangles &u32, triangle_count int)
+struct C.ui2_win_shape {
+	commands       &f64
+	count          int
+	has_fill       int
+	fill           u32
+	fill_opacity   f64
+	has_stroke     int
+	stroke         u32
+	stroke_opacity f64
+	stroke_width   f64
+	join           int
+	cap            int
+	even_odd       int
+}
+
+fn C.ui2_win_paint_background_into_fx(hwnd voidptr, dc voidptr, background u32, radius f64, transparent int, border_color u32, border_left f64, border_top f64, border_right f64, border_bottom f64, opacity f64, vertices &C.ui2_win_mesh_vertex, vertex_count int, triangles &u32, triangle_count int, shape &C.ui2_win_shape)
 
 // WindowsGradientMesh is what GradientFill draws a box's gradient from: a grid of
 // cells whose corners take the gradient's color there, two triangles a cell.
@@ -210,22 +227,64 @@ fn windows_gradient_mesh(box BoxStyle, width int, height int) WindowsGradientMes
 	return mesh
 }
 
-// windows_paint_box paints a view's background, fill effects included, into its
-// own paint cycle (dc nil) or into a DC a descendant asked for.
-fn windows_paint_box(hwnd voidptr, dc voidptr, box BoxStyle, transparent int) {
+// WindowsShape is a view's path packed for ui2_win_draw_shape: seven numbers
+// per command (verb, x, y, control points).
+struct WindowsShape {
+	commands []f64
+	style    ShapeStyle
+}
+
+fn windows_pack_shape(el Element) WindowsShape {
+	mut commands := []f64{cap: el.path.len * 7}
+	for cmd in el.path {
+		commands << f64(int(cmd.verb))
+		commands << cmd.x
+		commands << cmd.y
+		commands << cmd.cx1
+		commands << cmd.cy1
+		commands << cmd.cx2
+		commands << cmd.cy2
+	}
+	return WindowsShape{commands, el.shape_style}
+}
+
+// windows_paint_box paints a view's background, fill effects and shape included,
+// into its own paint cycle (dc nil) or into a DC a descendant asked for.
+fn windows_paint_box(hwnd voidptr, dc voidptr, key string, box BoxStyle, transparent int) {
 	mesh := windows_gradient_mesh(box, C.ui2_win_client_width(hwnd), C.ui2_win_client_height(hwnd))
 	vertices := if mesh.vertices.len > 0 { &mesh.vertices[0] } else { unsafe { nil } }
 	triangles := if mesh.triangles.len > 0 { &mesh.triangles[0] } else { unsafe { nil } }
 	opacity := if box.transparent { 1.0 } else { box_fill_opacity(box) }
+	st := windows_state()
+	mut shape_ptr := &C.ui2_win_shape(unsafe { nil })
+	mut packed := C.ui2_win_shape{}
+	if shape := st.node_shapes[key] {
+		style := shape.style
+		packed = C.ui2_win_shape{
+			commands:       if shape.commands.len > 0 { &shape.commands[0] } else { unsafe { nil } }
+			count:          shape.commands.len / 7
+			has_fill:       windows_bool(style.fill != none && style.fill_opacity > 0)
+			fill:           style.fill or { 0 }
+			fill_opacity:   style.fill_opacity
+			has_stroke:     windows_bool(style.stroke != none && style.stroke_opacity > 0)
+			stroke:         style.stroke or { 0 }
+			stroke_opacity: style.stroke_opacity
+			stroke_width:   style.stroke_width
+			join:           int(style.line_join)
+			cap:            int(style.line_cap)
+			even_odd:       windows_bool(style.fill_rule == .even_odd)
+		}
+		shape_ptr = &packed
+	}
 	if dc == unsafe { nil } {
 		C.ui2_win_paint_background_fx(hwnd, box.bg, box.radius, transparent, box.border_color,
 			box.border_left, box.border_top, box.border_right, box.border_bottom, opacity,
-			vertices, mesh.vertices.len, triangles, mesh.triangles.len / 3)
+			vertices, mesh.vertices.len, triangles, mesh.triangles.len / 3, shape_ptr)
 	} else {
 		C.ui2_win_paint_background_into_fx(hwnd, dc, box.bg, box.radius, transparent,
 			box.border_color, box.border_left, box.border_top, box.border_right,
 			box.border_bottom, opacity, vertices, mesh.vertices.len, triangles,
-			mesh.triangles.len / 3)
+			mesh.triangles.len / 3, shape_ptr)
 	}
 }
 
@@ -359,6 +418,7 @@ mut:
 	node_image_path    map[string]string
 	node_ids           map[string]string
 	node_boxes         map[string]BoxStyle
+	node_shapes        map[string]WindowsShape
 	node_text_styles   map[string]TextStyle
 	fonts              map[string]voidptr
 	font_sigs          map[string]string
@@ -653,6 +713,7 @@ fn run_window_with_min_size(title string, width int, height int, min_width int, 
 	st.build_screen = build_fn
 	st.event_handler = event_fn
 	configure_animation_driver(request_refresh, true)
+	configure_text_measurer(windows_measure_text_width)
 	st.run_config = WindowsRunConfig{
 		title: title
 		width: width
@@ -1127,6 +1188,11 @@ fn windows_render_element(parent voidptr, el Element, key string, parent_key str
 		el.text_style
 	}
 	st.node_boxes[key] = visual_box
+	if el.kind == .view && element_has_shape(el) {
+		st.node_shapes[key] = windows_pack_shape(el)
+	} else if key in st.node_shapes {
+		st.node_shapes.delete(key)
+	}
 	st.node_text_styles[key] = visual_text_style
 	st.node_ids[key] = el.id
 	st.handle_keys[windows_handle_id(hwnd)] = key
@@ -1456,6 +1522,19 @@ fn windows_update_tooltip(key string, hwnd voidptr, text_hwnd voidptr, tooltip s
 	}
 }
 
+// windows_measure_text_width measures text in the font windows_apply_font would
+// give a label with this style; a static control draws its text with no inset.
+fn windows_measure_text_width(text string, style TextStyle) f64 {
+	st := windows_state()
+	wide_family := windows_font_family(style.font_family).to_wide()
+	wide_text := text.to_wide()
+	width := C.ui2_win_measure_text(st.root, style.size, wide_family, windows_bool(style.bold),
+		windows_bool(style.italic), wide_text)
+	unsafe { free(wide_family) }
+	unsafe { free(wide_text) }
+	return width
+}
+
 // GDI has no face called `monospace` and would substitute a proportional one,
 // so the generic names resolve to Consolas, as the custom renderer resolves them
 // to an installed monospace face.
@@ -1687,6 +1766,7 @@ fn windows_remove_stale(active map[string]bool) {
 		st.node_image_path.delete(key)
 		st.node_ids.delete(key)
 		st.node_boxes.delete(key)
+		st.node_shapes.delete(key)
 		st.node_label_boxed.delete(key)
 		st.node_text_styles.delete(key)
 		st.scroll_positions.delete(key)
@@ -2103,21 +2183,22 @@ fn ui2_windows_window_proc(hwnd voidptr, message u32, wparam usize, lparam isize
 		win_wm_paint_background {
 			mut box := BoxStyle{}
 			mut kind := Kind.screen
+			mut box_key := ''
 			if hwnd == st.root {
 				box = st.node_boxes[''] or { BoxStyle{} }
 			} else {
-				key := st.handle_keys[windows_handle_id(hwnd)] or { return 0 }
-				box = st.node_boxes[key] or { return 0 }
-				kind = st.node_kinds[key] or { Kind.screen }
+				box_key = st.handle_keys[windows_handle_id(hwnd)] or { return 0 }
+				box = st.node_boxes[box_key] or { return 0 }
+				kind = st.node_kinds[box_key] or { Kind.screen }
 			}
-			windows_paint_box(hwnd, voidptr(wparam), box, windows_bool(windows_draws_no_background(kind,
+			windows_paint_box(hwnd, voidptr(wparam), box_key, box, windows_bool(windows_draws_no_background(kind,
 				box)))
 			return 0
 		}
 		win_wm_paint {
 			if hwnd == st.root {
 				box := st.node_boxes[''] or { BoxStyle{} }
-				windows_paint_box(hwnd, unsafe { nil }, box, windows_bool(box.transparent))
+				windows_paint_box(hwnd, unsafe { nil }, '', box, windows_bool(box.transparent))
 				return 0
 			}
 			key := st.handle_keys[windows_handle_id(hwnd)] or {
@@ -2127,7 +2208,7 @@ fn ui2_windows_window_proc(hwnd voidptr, message u32, wparam usize, lparam isize
 			if kind == .view || kind == .scroll || windows_is_label_container(key, hwnd) {
 				box := st.node_boxes[key] or { BoxStyle{} }
 				transparent := windows_bool(windows_draws_no_background(kind, box))
-				windows_paint_box(hwnd, unsafe { nil }, box, transparent)
+				windows_paint_box(hwnd, unsafe { nil }, key, box, transparent)
 				if kind == .view {
 					binding := st.pointer_bindings[windows_handle_id(hwnd)] or {
 						WindowsPointerBinding{}

@@ -99,3 +99,58 @@ static inline void ui2_macos_set_shadow_path(void* layer, double x, double y, do
 	((void (*)(void*, void*, void*))objc_msgSend)(layer, set, path);
 	release(path);
 }
+
+// Builds a CGPath from ui2 path commands and gives it to a CAShapeLayer. The
+// commands are packed seven doubles each: verb (move, line, quad, cubic,
+// close), x, y and the control points. CGFloat is a double here.
+typedef void* (*ui2_macos_path_create_fn)(void);
+typedef void (*ui2_macos_path_point_fn)(void* path, const void* transform, double x, double y);
+typedef void (*ui2_macos_path_quad_fn)(void* path, const void* transform, double cx, double cy,
+	double x, double y);
+typedef void (*ui2_macos_path_cubic_fn)(void* path, const void* transform, double c1x,
+	double c1y, double c2x, double c2y, double x, double y);
+typedef void (*ui2_macos_path_close_fn)(void* path);
+
+static inline void ui2_macos_set_shape_path(void* layer, const double* commands, int count) {
+	static ui2_macos_path_create_fn create = (void*)0;
+	static ui2_macos_path_point_fn move = (void*)0;
+	static ui2_macos_path_point_fn line = (void*)0;
+	static ui2_macos_path_quad_fn quad = (void*)0;
+	static ui2_macos_path_cubic_fn cubic = (void*)0;
+	static ui2_macos_path_close_fn close_subpath = (void*)0;
+	static ui2_macos_release_path_fn release = (void*)0;
+	if (create == (void*)0) {
+		create = (ui2_macos_path_create_fn)dlsym(RTLD_DEFAULT, "CGPathCreateMutable");
+		move = (ui2_macos_path_point_fn)dlsym(RTLD_DEFAULT, "CGPathMoveToPoint");
+		line = (ui2_macos_path_point_fn)dlsym(RTLD_DEFAULT, "CGPathAddLineToPoint");
+		quad = (ui2_macos_path_quad_fn)dlsym(RTLD_DEFAULT, "CGPathAddQuadCurveToPoint");
+		cubic = (ui2_macos_path_cubic_fn)dlsym(RTLD_DEFAULT, "CGPathAddCurveToPoint");
+		close_subpath = (ui2_macos_path_close_fn)dlsym(RTLD_DEFAULT, "CGPathCloseSubpath");
+		release = (ui2_macos_release_path_fn)dlsym(RTLD_DEFAULT, "CGPathRelease");
+	}
+	if (create == (void*)0 || move == (void*)0 || line == (void*)0 || quad == (void*)0
+			|| cubic == (void*)0 || close_subpath == (void*)0 || release == (void*)0) {
+		return;
+	}
+	void* path = create();
+	int started = 0;
+	for (int i = 0; i < count; i++) {
+		const double* c = commands + i * 7;
+		int verb = (int)c[0];
+		if (verb != 0 && verb != 4 && !started) {
+			// CoreGraphics needs a current point before a line or curve.
+			move(path, (void*)0, c[1], c[2]);
+			started = 1;
+			if (verb == 1) continue;
+		}
+		switch (verb) {
+			case 0: move(path, (void*)0, c[1], c[2]); started = 1; break;
+			case 1: line(path, (void*)0, c[1], c[2]); break;
+			case 2: quad(path, (void*)0, c[3], c[4], c[1], c[2]); break;
+			case 3: cubic(path, (void*)0, c[3], c[4], c[5], c[6], c[1], c[2]); break;
+			case 4: if (started) close_subpath(path); break;
+		}
+	}
+	((void (*)(void*, void*, void*))objc_msgSend)(layer, sel_registerName("setPath:"), path);
+	release(path);
+}

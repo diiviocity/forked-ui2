@@ -112,6 +112,7 @@ pub fn run(build_screen BuildFn, event_handler EventFn) {
 	g_build_screen = build_screen
 	g_event_handler = event_handler
 	configure_animation_driver(request_refresh, true)
+	configure_text_measurer(ios_measure_text_width)
 	ensure_runtime_classes()
 	pool := macos.autorelease_pool_new()
 	defer {
@@ -339,6 +340,18 @@ fn font(size f64, bold bool) macos.Id {
 	return macos.msg_id_f64(macos.get_class('UIFont'), 'systemFontOfSize:', size)
 }
 
+// ios_measure_text_width measures text in the font labels are given; a UILabel
+// draws its text with no inset.
+fn ios_measure_text_width(text string, style TextStyle) f64 {
+	attrs := macos.msg_id2(macos.get_class('NSDictionary'), 'dictionaryWithObject:forKey:',
+		font(style.size, style.bold), macos.nsstring('NSFont'))
+	attributed := macos.msg_id2(macos.alloc('NSAttributedString'), 'initWithString:attributes:',
+		macos.nsstring(text), attrs)
+	width := macos.msg_point(attributed, 'size').x
+	macos.release(attributed)
+	return width
+}
+
 // set_box_background paints what a BoxStyle puts beneath its borders: the solid
 // fill at its opacity or a CAGradientLayer, and the drop shadow.
 fn set_box_background(view View, box BoxStyle) {
@@ -427,6 +440,131 @@ fn set_layer_shadow(layer macos.Id, box BoxStyle) {
 
 // A rounded box clips its subviews to its corners, except when it casts a shadow:
 // a layer that masks to its bounds masks its own shadow away too.
+type IosPathCreateFn = fn () voidptr
+
+type IosPathPointFn = fn (path voidptr, transform voidptr, x f64, y f64)
+
+type IosPathQuadFn = fn (path voidptr, transform voidptr, cx f64, cy f64, x f64, y f64)
+
+type IosPathCubicFn = fn (path voidptr, transform voidptr, c1x f64, c1y f64, c2x f64, c2y f64, x f64, y f64)
+
+type IosPathOneFn = fn (path voidptr)
+
+// cg_path builds a CGPath from ui2 path commands; the caller releases it.
+// CoreGraphics is reached through its exported symbols, as the constants are.
+fn cg_path(commands []PathCommand) voidptr {
+	create := unsafe { IosPathCreateFn(extern_symbol('CGPathCreateMutable')) }
+	move := unsafe { IosPathPointFn(extern_symbol('CGPathMoveToPoint')) }
+	line := unsafe { IosPathPointFn(extern_symbol('CGPathAddLineToPoint')) }
+	quad := unsafe { IosPathQuadFn(extern_symbol('CGPathAddQuadCurveToPoint')) }
+	cubic := unsafe { IosPathCubicFn(extern_symbol('CGPathAddCurveToPoint')) }
+	close_subpath := unsafe { IosPathOneFn(extern_symbol('CGPathCloseSubpath')) }
+	if voidptr(create) == unsafe { nil } || voidptr(move) == unsafe { nil }
+		|| voidptr(line) == unsafe { nil } || voidptr(quad) == unsafe { nil }
+		|| voidptr(cubic) == unsafe { nil } || voidptr(close_subpath) == unsafe { nil } {
+		return unsafe { nil }
+	}
+	path := create()
+	mut started := false
+	for cmd in commands {
+		if cmd.verb != .move_to && cmd.verb != .close && !started {
+			// CoreGraphics needs a current point before a line or curve.
+			move(path, unsafe { nil }, cmd.x, cmd.y)
+			started = true
+			if cmd.verb == .line_to {
+				continue
+			}
+		}
+		match cmd.verb {
+			.move_to {
+				move(path, unsafe { nil }, cmd.x, cmd.y)
+				started = true
+			}
+			.line_to {
+				line(path, unsafe { nil }, cmd.x, cmd.y)
+			}
+			.quad_to {
+				quad(path, unsafe { nil }, cmd.cx1, cmd.cy1, cmd.x, cmd.y)
+			}
+			.cubic_to {
+				cubic(path, unsafe { nil }, cmd.cx1, cmd.cy1, cmd.cx2, cmd.cy2, cmd.x, cmd.y)
+			}
+			.close {
+				if started {
+					close_subpath(path)
+				}
+			}
+		}
+	}
+	return path
+}
+
+// set_view_shape draws a view's path (see `shape`) with a CAShapeLayer beneath
+// its children, and takes the layer away when the view stops drawing one.
+fn set_view_shape(view View, el Element) {
+	key := voidptr(macos.sel('ui2_shape_assoc'))
+	mut layer := macos.get_associated_object(view, key)
+	if !element_has_shape(el) {
+		if layer != unsafe { nil } {
+			macos.msg_void(layer, 'removeFromSuperlayer')
+			macos.set_associated_object(view, key, unsafe { nil }, macos.assoc_retain_nonatomic)
+		}
+		return
+	}
+	parent := macos.msg_id(view, 'layer')
+	if layer == unsafe { nil } {
+		layer = macos.msg_id(macos.alloc('CAShapeLayer'), 'init')
+		macos.set_associated_object(view, key, layer, macos.assoc_retain_nonatomic)
+		macos.release(layer)
+		macos.msg_void_f64(layer, 'setZPosition:', -999)
+	}
+	if macos.msg_id(layer, 'superlayer') != parent {
+		macos.msg_void1(parent, 'addSublayer:', layer)
+	}
+	macos.msg_void_rect(layer, 'setFrame:', macos.msg_rect(view, 'bounds'))
+	path := cg_path(el.path)
+	macos.msg_void1(layer, 'setPath:', path)
+	if path != unsafe { nil } {
+		release := unsafe { IosPathOneFn(extern_symbol('CGPathRelease')) }
+		if voidptr(release) != unsafe { nil } {
+			release(path)
+		}
+	}
+	style := el.shape_style
+	fill := if hex := style.fill {
+		macos.msg_id(ios.color_alpha(hex, style.fill_opacity), 'CGColor')
+	} else {
+		unsafe { nil }
+	}
+	macos.msg_void1(layer, 'setFillColor:', fill)
+	stroke := if hex := style.stroke {
+		macos.msg_id(ios.color_alpha(hex, if style.stroke_width > 0 {
+			style.stroke_opacity
+		} else {
+			0.0
+		}), 'CGColor')
+	} else {
+		unsafe { nil }
+	}
+	macos.msg_void1(layer, 'setStrokeColor:', stroke)
+	macos.msg_void_f64(layer, 'setLineWidth:', style.stroke_width)
+	macos.msg_void1(layer, 'setLineJoin:', macos.nsstring(match style.line_join {
+		.round { 'round' }
+		.miter { 'miter' }
+		.bevel { 'bevel' }
+	}))
+	macos.msg_void1(layer, 'setLineCap:', macos.nsstring(match style.line_cap {
+		.round { 'round' }
+		.butt { 'butt' }
+		.square { 'square' }
+	}))
+	macos.msg_void1(layer, 'setFillRule:', macos.nsstring(if style.fill_rule == .even_odd {
+		'even-odd'
+	} else {
+		'non-zero'
+	}))
+}
+
 fn set_box_corners(view View, box BoxStyle) {
 	layer := macos.msg_id(view, 'layer')
 	macos.msg_void_f64(layer, 'setCornerRadius:', box.radius)
@@ -1391,6 +1529,9 @@ fn render_element(parent View, el Element, key string, mut active map[string]boo
 		el.box
 	}
 	set_box_borders(native, border_box)
+	if el.kind == .view {
+		set_view_shape(native, el)
+	}
 
 	match el.kind {
 		.screen {}

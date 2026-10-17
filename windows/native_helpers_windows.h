@@ -1265,6 +1265,25 @@ static inline void *ui2_win_create_font(void *hwnd, double point_size,
 	return replacement;
 }
 
+// Measures one line of text in the font a label with this style is given, so
+// layout can size a label to its text.
+static inline double ui2_win_measure_text(void *hwnd, double point_size,
+		const wchar_t *family, int bold, int italic, const wchar_t *text) {
+	HFONT font = (HFONT)ui2_win_create_font(hwnd, point_size, family, bold, italic, 0, 0, text);
+	HDC dc = GetDC((HWND)hwnd);
+	if (dc == NULL) {
+		if (font != NULL) DeleteObject(font);
+		return 0;
+	}
+	HGDIOBJ previous = font != NULL ? SelectObject(dc, font) : NULL;
+	SIZE size = { 0, 0 };
+	GetTextExtentPoint32W(dc, text, (int)wcslen(text), &size);
+	if (previous != NULL) SelectObject(dc, previous);
+	ReleaseDC((HWND)hwnd, dc);
+	if (font != NULL) DeleteObject(font);
+	return (double)size.cx;
+}
+
 // Reports how many characters of `text` the font cannot draw, so tests can
 // assert that a control ended up with a font that covers its text.
 static inline int ui2_win_font_missing_glyphs(void *font, const wchar_t *text) {
@@ -1568,12 +1587,194 @@ static inline void ui2_win_paint_parent_background(HWND hwnd, HDC dc) {
 	}
 }
 
+// A view's vector path (ui2 `shape`), packed seven doubles per command: verb
+// (move, line, quad, cubic, close), x, y and the control points.
+typedef struct ui2_win_shape {
+	const double *commands;
+	int count;
+	int has_fill;
+	unsigned int fill;
+	double fill_opacity;
+	int has_stroke;
+	unsigned int stroke;
+	double stroke_opacity;
+	double stroke_width;
+	int join;  /* round, miter, bevel */
+	int cap;   /* round, butt, square */
+	int even_odd;
+} ui2_win_shape;
+
+// GDI+ draws shapes antialiased, which GDI cannot. Its flat API is looked up
+// in gdiplus.dll at run time, so applications need no extra library to link.
+typedef struct ui2_gdip_startup_input {
+	UINT32 version;
+	void *debug_callback;
+	BOOL suppress_background_thread;
+	BOOL suppress_external_codecs;
+} ui2_gdip_startup_input;
+
+typedef int (WINAPI *ui2_gdip_startup_fn)(ULONG_PTR *, const ui2_gdip_startup_input *, void *);
+typedef int (WINAPI *ui2_gdip_from_hdc_fn)(HDC, void **);
+typedef int (WINAPI *ui2_gdip_set_int_fn)(void *, int);
+typedef int (WINAPI *ui2_gdip_create_path_fn)(int, void **);
+typedef int (WINAPI *ui2_gdip_path_fn)(void *);
+typedef int (WINAPI *ui2_gdip_add_line_fn)(void *, float, float, float, float);
+typedef int (WINAPI *ui2_gdip_add_bezier_fn)(void *, float, float, float, float, float, float, float, float);
+typedef int (WINAPI *ui2_gdip_solid_fill_fn)(unsigned int, void **);
+typedef int (WINAPI *ui2_gdip_fill_path_fn)(void *, void *, void *);
+typedef int (WINAPI *ui2_gdip_create_pen_fn)(unsigned int, float, int, void **);
+typedef int (WINAPI *ui2_gdip_set_float_fn)(void *, float);
+typedef int (WINAPI *ui2_gdip_draw_path_fn)(void *, void *, void *);
+
+typedef struct ui2_gdip_api {
+	int loaded;
+	int ok;
+	ui2_gdip_from_hdc_fn from_hdc;
+	ui2_gdip_set_int_fn smoothing;
+	ui2_gdip_set_int_fn pixel_offset;
+	ui2_gdip_create_path_fn create_path;
+	ui2_gdip_path_fn start_figure;
+	ui2_gdip_path_fn close_figure;
+	ui2_gdip_add_line_fn add_line;
+	ui2_gdip_add_bezier_fn add_bezier;
+	ui2_gdip_solid_fill_fn solid_fill;
+	ui2_gdip_fill_path_fn fill_path;
+	ui2_gdip_create_pen_fn create_pen;
+	ui2_gdip_set_int_fn pen_join;
+	ui2_gdip_set_int_fn pen_start_cap;
+	ui2_gdip_set_int_fn pen_end_cap;
+	ui2_gdip_set_float_fn pen_miter_limit;
+	ui2_gdip_draw_path_fn draw_path;
+	ui2_gdip_path_fn delete_path;
+	ui2_gdip_path_fn delete_brush;
+	ui2_gdip_path_fn delete_pen;
+	ui2_gdip_path_fn delete_graphics;
+} ui2_gdip_api;
+
+static inline ui2_gdip_api *ui2_gdip(void) {
+	static ui2_gdip_api api;
+	if (api.loaded) return api.ok ? &api : NULL;
+	api.loaded = 1;
+	HMODULE module = LoadLibraryW(L"gdiplus.dll");
+	if (module == NULL) return NULL;
+#define UI2_GDIP(field, type, name) api.field = (type)(void *)GetProcAddress(module, name); \
+	if (api.field == NULL) return NULL;
+	ui2_gdip_startup_fn startup = (ui2_gdip_startup_fn)(void *)GetProcAddress(module, "GdiplusStartup");
+	if (startup == NULL) return NULL;
+	UI2_GDIP(from_hdc, ui2_gdip_from_hdc_fn, "GdipCreateFromHDC")
+	UI2_GDIP(smoothing, ui2_gdip_set_int_fn, "GdipSetSmoothingMode")
+	UI2_GDIP(pixel_offset, ui2_gdip_set_int_fn, "GdipSetPixelOffsetMode")
+	UI2_GDIP(create_path, ui2_gdip_create_path_fn, "GdipCreatePath")
+	UI2_GDIP(start_figure, ui2_gdip_path_fn, "GdipStartPathFigure")
+	UI2_GDIP(close_figure, ui2_gdip_path_fn, "GdipClosePathFigure")
+	UI2_GDIP(add_line, ui2_gdip_add_line_fn, "GdipAddPathLine")
+	UI2_GDIP(add_bezier, ui2_gdip_add_bezier_fn, "GdipAddPathBezier")
+	UI2_GDIP(solid_fill, ui2_gdip_solid_fill_fn, "GdipCreateSolidFill")
+	UI2_GDIP(fill_path, ui2_gdip_fill_path_fn, "GdipFillPath")
+	UI2_GDIP(create_pen, ui2_gdip_create_pen_fn, "GdipCreatePen1")
+	UI2_GDIP(pen_join, ui2_gdip_set_int_fn, "GdipSetPenLineJoin")
+	UI2_GDIP(pen_start_cap, ui2_gdip_set_int_fn, "GdipSetPenStartCap")
+	UI2_GDIP(pen_end_cap, ui2_gdip_set_int_fn, "GdipSetPenEndCap")
+	UI2_GDIP(pen_miter_limit, ui2_gdip_set_float_fn, "GdipSetPenMiterLimit")
+	UI2_GDIP(draw_path, ui2_gdip_draw_path_fn, "GdipDrawPath")
+	UI2_GDIP(delete_path, ui2_gdip_path_fn, "GdipDeletePath")
+	UI2_GDIP(delete_brush, ui2_gdip_path_fn, "GdipDeleteBrush")
+	UI2_GDIP(delete_pen, ui2_gdip_path_fn, "GdipDeletePen")
+	UI2_GDIP(delete_graphics, ui2_gdip_path_fn, "GdipDeleteGraphics")
+#undef UI2_GDIP
+	ULONG_PTR token = 0;
+	ui2_gdip_startup_input input = { 1, NULL, FALSE, FALSE };
+	if (startup(&token, &input, NULL) != 0) return NULL;
+	api.ok = 1;
+	return &api;
+}
+
+static inline unsigned int ui2_gdip_argb(unsigned int rgb, double opacity) {
+	double a = opacity < 0 ? 0 : (opacity > 1 ? 1 : opacity);
+	return ((unsigned int)(a * 255.0 + 0.5) << 24) | (rgb & 0xffffff);
+}
+
+static inline void ui2_win_draw_shape(HDC dc, const ui2_win_shape *shape) {
+	if (shape == NULL || shape->commands == NULL || shape->count <= 0) return;
+	ui2_gdip_api *gdip = ui2_gdip();
+	if (gdip == NULL) return;
+	void *graphics = NULL;
+	if (gdip->from_hdc(dc, &graphics) != 0 || graphics == NULL) return;
+	gdip->smoothing(graphics, 4 /* SmoothingModeAntiAlias */);
+	gdip->pixel_offset(graphics, 4 /* PixelOffsetModeHalf */);
+	void *path = NULL;
+	if (gdip->create_path(shape->even_odd ? 0 : 1, &path) != 0 || path == NULL) {
+		gdip->delete_graphics(graphics);
+		return;
+	}
+	double cx = 0, cy = 0;
+	int started = 0;
+	for (int i = 0; i < shape->count; i++) {
+		const double *c = shape->commands + i * 7;
+		int verb = (int)c[0];
+		if (verb == 0) {
+			gdip->start_figure(path);
+			cx = c[1];
+			cy = c[2];
+			started = 1;
+			continue;
+		}
+		if (verb == 4) {
+			if (started) gdip->close_figure(path);
+			continue;
+		}
+		if (!started) {
+			cx = c[1];
+			cy = c[2];
+			started = 1;
+			if (verb == 1) continue;
+		}
+		if (verb == 1) {
+			gdip->add_line(path, (float)cx, (float)cy, (float)c[1], (float)c[2]);
+		} else if (verb == 2) {
+			/* A quadratic as the cubic with controls two thirds of the way in. */
+			double c1x = cx + 2.0 / 3.0 * (c[3] - cx), c1y = cy + 2.0 / 3.0 * (c[4] - cy);
+			double c2x = c[1] + 2.0 / 3.0 * (c[3] - c[1]), c2y = c[2] + 2.0 / 3.0 * (c[4] - c[2]);
+			gdip->add_bezier(path, (float)cx, (float)cy, (float)c1x, (float)c1y, (float)c2x,
+				(float)c2y, (float)c[1], (float)c[2]);
+		} else if (verb == 3) {
+			gdip->add_bezier(path, (float)cx, (float)cy, (float)c[3], (float)c[4], (float)c[5],
+				(float)c[6], (float)c[1], (float)c[2]);
+		}
+		cx = c[1];
+		cy = c[2];
+	}
+	if (shape->has_fill) {
+		void *brush = NULL;
+		if (gdip->solid_fill(ui2_gdip_argb(shape->fill, shape->fill_opacity), &brush) == 0) {
+			gdip->fill_path(graphics, brush, path);
+			gdip->delete_brush(brush);
+		}
+	}
+	if (shape->has_stroke && shape->stroke_width > 0) {
+		void *pen = NULL;
+		if (gdip->create_pen(ui2_gdip_argb(shape->stroke, shape->stroke_opacity),
+				(float)shape->stroke_width, 2 /* UnitPixel */, &pen) == 0) {
+			static const int joins[] = { 2 /* round */, 0 /* miter */, 1 /* bevel */ };
+			static const int caps[] = { 2 /* round */, 0 /* flat */, 1 /* square */ };
+			gdip->pen_join(pen, joins[shape->join % 3]);
+			gdip->pen_start_cap(pen, caps[shape->cap % 3]);
+			gdip->pen_end_cap(pen, caps[shape->cap % 3]);
+			gdip->pen_miter_limit(pen, 4.0f);
+			gdip->draw_path(graphics, pen, path);
+			gdip->delete_pen(pen);
+		}
+	}
+	gdip->delete_path(path);
+	gdip->delete_graphics(graphics);
+}
+
 static inline void ui2_win_paint_background_into_fx(void *hwnd_ptr, void *dc_ptr,
 		unsigned int background, double radius, int transparent,
 		unsigned int border_color, double border_left, double border_top,
 		double border_right, double border_bottom, double opacity,
 		const ui2_win_mesh_vertex *vertices, int vertex_count,
-		const unsigned int *triangles, int triangle_count) {
+		const unsigned int *triangles, int triangle_count, const ui2_win_shape *shape) {
 	HWND hwnd = (HWND)hwnd_ptr;
 	HDC dc = (HDC)dc_ptr;
 	if (hwnd == NULL || dc == NULL) return;
@@ -1595,6 +1796,7 @@ static inline void ui2_win_paint_background_into_fx(void *hwnd_ptr, void *dc_ptr
 		ui2_win_fill_box(dc, &rect, background, radius, opacity, vertices, vertex_count,
 			triangles, triangle_count);
 	}
+	ui2_win_draw_shape(dc, shape);
 	HRGN clip = NULL;
 	if (radius > 0.5) {
 		int diameter = (int)(radius * 2.0 + 0.5);
@@ -1615,21 +1817,22 @@ static inline void ui2_win_paint_background_into(void *hwnd_ptr, void *dc_ptr,
 		unsigned int border_color, double border_left, double border_top,
 		double border_right, double border_bottom) {
 	ui2_win_paint_background_into_fx(hwnd_ptr, dc_ptr, background, radius, transparent,
-		border_color, border_left, border_top, border_right, border_bottom, 1.0, NULL, 0, NULL, 0);
+		border_color, border_left, border_top, border_right, border_bottom, 1.0, NULL, 0, NULL, 0,
+		NULL);
 }
 
 static inline void ui2_win_paint_background_fx(void *hwnd_ptr, unsigned int background,
 		double radius, int transparent, unsigned int border_color, double border_left,
 		double border_top, double border_right, double border_bottom, double opacity,
 		const ui2_win_mesh_vertex *vertices, int vertex_count, const unsigned int *triangles,
-		int triangle_count) {
+		int triangle_count, const ui2_win_shape *shape) {
 	HWND hwnd = (HWND)hwnd_ptr;
 	PAINTSTRUCT paint;
 	HDC dc = BeginPaint(hwnd, &paint);
 	if (dc != NULL) {
 		ui2_win_paint_background_into_fx(hwnd, dc, background, radius, transparent,
 			border_color, border_left, border_top, border_right, border_bottom, opacity,
-			vertices, vertex_count, triangles, triangle_count);
+			vertices, vertex_count, triangles, triangle_count, shape);
 	}
 	EndPaint(hwnd, &paint);
 }
@@ -1638,7 +1841,7 @@ static inline void ui2_win_paint_background(void *hwnd_ptr, unsigned int backgro
 		double radius, int transparent, unsigned int border_color, double border_left,
 		double border_top, double border_right, double border_bottom) {
 	ui2_win_paint_background_fx(hwnd_ptr, background, radius, transparent, border_color,
-		border_left, border_top, border_right, border_bottom, 1.0, NULL, 0, NULL, 0);
+		border_left, border_top, border_right, border_bottom, 1.0, NULL, 0, NULL, 0, NULL);
 }
 
 static inline void ui2_win_paint_transparent_button(void *hwnd_ptr,
