@@ -43,9 +43,9 @@ struct SliderSpec {
 
 fn slider_spec(el Element) SliderSpec {
 	return SliderSpec{
-		min: el.min_value
-		max: el.max_value
-		step: el.step
+		min:         el.min_value
+		max:         el.max_value
+		step:        el.step
 		orientation: el.orientation
 	}
 }
@@ -129,20 +129,20 @@ fn slider_number(value f64) string {
 pub fn slider(config SliderConfig) Element {
 	value := slider_clamped_value(config.value, config.min, config.max)
 	return Element{
-		kind: .slider
-		id: config.id
-		action_id: config.action_id
-		frame: config.frame
-		value: value
-		min_value: config.min
-		max_value: config.max
-		step: if config.step > 0 { config.step } else { 0.0 }
-		orientation: config.orientation
-		padding: config.padding
-		value_track: config.value_track
-		slider_style: config.style
-		enabled: config.enabled
-		accessibility_role: 'slider'
+		kind:                .slider
+		id:                  config.id
+		action_id:           config.action_id
+		frame:               config.frame
+		value:               value
+		min_value:           config.min
+		max_value:           config.max
+		step:                if config.step > 0 { config.step } else { 0.0 }
+		orientation:         config.orientation
+		padding:             config.padding
+		value_track:         config.value_track
+		slider_style:        config.style
+		enabled:             config.enabled
+		accessibility_role:  'slider'
 		accessibility_label: if config.accessibility_label.len > 0 {
 			config.accessibility_label
 		} else {

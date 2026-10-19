@@ -11,7 +11,7 @@ fn animation_test_event_handler(event AnimationEvent) {
 
 fn animation_test_element() Element {
 	return view('tile', rect(10, 20, 100, 40), BoxStyle{
-		bg: 0x000000
+		bg:     0x000000
 		radius: 4
 	}, [])
 }
@@ -36,13 +36,13 @@ fn animation_test_find(element Element, id string) Element {
 fn test_animation_interpolates_multiple_widget_properties() {
 	reset_widget_animations()
 	definition := animation(AnimationConfig{
-		duration: 1
-		transition: .linear
-		x: 110
-		y: 120
-		width: 200
-		rotation: 90
-		background: u32(0xffffff)
+		duration:      1
+		transition:    .linear
+		x:             110
+		y:             120
+		width:         200
+		rotation:      90
+		background:    u32(0xffffff)
 		corner_radius: 12
 	})
 	start_widget_animation_at('tile', definition, 1_000, false)
@@ -67,11 +67,11 @@ fn test_animation_sequence_and_parallel_composition() {
 	reset_widget_animations()
 	move_x := animation(AnimationConfig{
 		duration: 1
-		x: 110
+		x:        110
 	})
 	move_y := animation(AnimationConfig{
 		duration: 2
-		y: 100
+		y:        100
 	})
 	sequence_definition := move_x + move_y
 	assert sequence_definition.duration == 3
@@ -94,8 +94,8 @@ fn test_animation_easing_step_and_custom_transition() {
 	reset_widget_animations()
 	stepped := animation(AnimationConfig{
 		duration: 1
-		step: 0.25
-		x: 110
+		step:     0.25
+		x:        110
 	})
 	start_widget_animation_at('tile', stepped, 1_000, false)
 	result := animation_test_find(apply_widget_animations_at(animation_test_root(animation_test_element()), 1_370), 'tile')
@@ -103,11 +103,11 @@ fn test_animation_easing_step_and_custom_transition() {
 
 	reset_widget_animations()
 	custom := animation(AnimationConfig{
-		duration: 1
+		duration:      1
 		transition_fn: fn (progress f64) f64 {
 			return progress * progress
 		}
-		x: 110
+		x:             110
 	})
 	start_widget_animation_at('tile', custom, 1_000, false)
 	eased := animation_test_find(apply_widget_animations_at(animation_test_root(animation_test_element()), 1_500), 'tile')
@@ -117,7 +117,7 @@ fn test_animation_easing_step_and_custom_transition() {
 fn test_animation_generic_properties_cover_widget_and_style_values() {
 	reset_widget_animations()
 	definition := animation(AnimationConfig{
-		duration: 1
+		duration:   1
 		properties: [
 			animation_number_property('value', 80),
 			animation_number_property('box.border_left', 10),
@@ -144,8 +144,8 @@ fn test_animation_generic_properties_normalize_names_and_ignore_invalid_targets(
 	assert !is_animatable_property('text', .number)
 	assert !is_animatable_property('value', .color)
 	definition := animation(AnimationConfig{
-		duration: 1
-		x: 110
+		duration:   1
+		x:          110
 		properties: [
 			animation_number_property('frame.x', 210),
 			animation_color_property('value', 0xffffff),
@@ -164,11 +164,11 @@ fn test_repeating_sequence_restarts_from_previous_end() {
 	reset_widget_animations()
 	forward := animation(AnimationConfig{
 		duration: 0.1
-		x: 110
+		x:        110
 	})
 	back := animation(AnimationConfig{
 		duration: 0.1
-		x: 10
+		x:        10
 	})
 	definition := (forward + back).repeating()
 	start_widget_animation_at('tile', definition, 1_000, false)
@@ -181,15 +181,15 @@ fn test_redirect_cancel_property_and_clear_preserve_declarative_values() {
 	reset_widget_animations()
 	first := animation(AnimationConfig{
 		duration: 1
-		x: 110
-		y: 120
+		x:        110
+		y:        120
 	})
 	start_widget_animation_at('tile', first, 1_000, false)
 	apply_widget_animations_at(animation_test_root(animation_test_element()), 1_500)
 
 	redirect := animation(AnimationConfig{
 		duration: 1
-		x: 210
+		x:        210
 	})
 	start_widget_animation_at('tile', redirect, 1_500, false)
 	redirected := animation_test_find(apply_widget_animations_at(animation_test_root(animation_test_element()), 2_000), 'tile')
@@ -217,7 +217,7 @@ fn test_animation_events_and_stop_cancel_semantics() {
 	g_animation_test_events = []AnimationEvent{}
 	definition := animation(AnimationConfig{
 		duration: 1
-		x: 110
+		x:        110
 		on_event: animation_test_event_handler
 	})
 	start_widget_animation_at('tile', definition, 1_000, false)

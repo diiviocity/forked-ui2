@@ -113,13 +113,12 @@ fn linux_kdialog_command(cfg MessageBoxConfig) string {
 			parts << [kind, body]
 		}
 		.yes_no_cancel {
-			parts << ['--yesnocancel', body, '--yes-label', linux_shell_quote(titles[0]),
-				'--no-label', linux_shell_quote(titles[1]),
-				'--cancel-label', linux_shell_quote(titles[2])]
+			parts << ['--yesnocancel', body, '--yes-label', linux_shell_quote(titles[0]), '--no-label',
+				linux_shell_quote(titles[1]), '--cancel-label', linux_shell_quote(titles[2])]
 		}
 		else {
-			parts << ['--yesno', body, '--yes-label', linux_shell_quote(titles[0]),
-				'--no-label', linux_shell_quote(titles[1])]
+			parts << ['--yesno', body, '--yes-label', linux_shell_quote(titles[0]), '--no-label',
+				linux_shell_quote(titles[1])]
 		}
 	}
 	return parts.join(' ')

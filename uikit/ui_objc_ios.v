@@ -117,15 +117,15 @@ fn (mut block GlobalBlock) build(invoke voidptr, signature string) voidptr {
 		return unsafe { nil }
 	}
 	block.descriptor = BlockDescriptor{
-		reserved: 0
-		size: u64(sizeof(BlockLiteral))
+		reserved:  0
+		size:      u64(sizeof(BlockLiteral))
 		signature: voidptr(signature.str)
 	}
 	block.literal = BlockLiteral{
-		isa: isa
-		flags: block_is_global | block_has_signature
-		reserved: 0
-		invoke: invoke
+		isa:        isa
+		flags:      block_is_global | block_has_signature
+		reserved:   0
+		invoke:     invoke
 		descriptor: voidptr(&block.descriptor)
 	}
 	return voidptr(&block.literal)
