@@ -771,11 +771,17 @@ pub fn image(id string, path string, frame Rect) Element {
 	}
 }
 
+// opengl reserves a surface for application-rendered GL content. The gg renderer
+// draws it from set_gl_surface_texture; native backends draw it as an empty, transparent
+// view.
 pub fn opengl(id string, frame Rect) Element {
 	return Element{
 		kind: .opengl
 		id: id
 		frame: frame
+		box: BoxStyle{
+			transparent: true
+		}
 	}
 }
 

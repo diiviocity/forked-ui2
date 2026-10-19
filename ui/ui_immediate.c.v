@@ -228,7 +228,6 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 	__global g_font_symbol_fons = voidptr(unsafe { nil })
 	__global g_active_images = map[string]bool{}
 	__global g_opengl_surface_frames = map[string]Rect{}
-	__global g_gl_surface_renderer = GlSurfaceFn(unsafe { nil })
 	__global g_gl_surface_textures = map[string]GlSurfaceTexture{}
 	__global g_open_dropdown = ''
 	__global g_dropdown_popup = DropdownPopup{}
@@ -755,6 +754,7 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 				g_gl_surface_renderer(id, frame, f64(ctx.scale), f64(ctx.height))
 			}
 		}
+		sync_gl_surface_textures()
 		g_opengl_surface_frames = map[string]Rect{}
 		ctx.begin()
 		if has_root {
@@ -2874,42 +2874,56 @@ fn page_focused_text_area(direction int) {
 		g_opengl_surface_frames[id] = Rect{x: x, y: y, width: w, height: h}
 	}
 
-	// set_gl_surface_renderer installs the function that draws every `opengl`
-	// element after the UI. It runs on the UI thread with the GL context current.
-	pub fn set_gl_surface_renderer(renderer GlSurfaceFn) {
-		g_gl_surface_renderer = renderer
-	}
-
-	// set_gl_surface_texture shows gl_texture, a GL texture of width x height pixels,
-	// in the `opengl` element with this id. Call it from the surface renderer, which
-	// runs before the frame is built, so the texture is wrapped before it is drawn.
-	pub fn set_gl_surface_texture(id string, gl_texture u32, width int, height int) {
-		mut sampler := gfx.Sampler{}
-		if current := g_gl_surface_textures[id] {
-			if current.gl_texture == gl_texture && current.width == width
-				&& current.height == height {
-				return
-			}
-			gfx.destroy_image(current.image)
-			sampler = current.sampler
-		} else {
-			sampler = gfx.make_sampler(&gfx.SamplerDesc{
+	// make_gl_surface_texture wraps a GL texture as a sokol image with its sampler.
+	// The GL texture stays owned by the application.
+	fn make_gl_surface_texture(request GlTextureRequest) GlSurfaceTexture {
+		mut desc := gfx.ImageDesc{
+			width:        request.width
+			height:       request.height
+			pixel_format: .rgba8
+		}
+		desc.gl_textures[0] = request.gl_texture
+		return GlSurfaceTexture{
+			gl_texture: request.gl_texture
+			width:      request.width
+			height:     request.height
+			image:      gfx.make_image(&desc)
+			sampler:    gfx.make_sampler(&gfx.SamplerDesc{
 				min_filter: .linear
 				mag_filter: .linear
 			})
 		}
-		mut desc := gfx.ImageDesc{
-			width:        width
-			height:       height
-			pixel_format: .rgba8
+	}
+
+	fn release_gl_surface_texture(tex GlSurfaceTexture) {
+		gfx.destroy_image(tex.image)
+		gfx.destroy_sampler(tex.sampler)
+	}
+
+	// sync_gl_surface_textures runs before each frame, outside its render pass. It drops
+	// the requests and textures of elements that were not drawn last frame, and wraps
+	// new or changed requests as sokol images.
+	fn sync_gl_surface_textures() {
+		for id in g_gl_surface_requests.keys() {
+			if id !in g_opengl_surface_frames {
+				g_gl_surface_requests.delete(id)
+			}
 		}
-		desc.gl_textures[0] = gl_texture
-		g_gl_surface_textures[id] = GlSurfaceTexture{
-			gl_texture: gl_texture
-			width:      width
-			height:     height
-			image:      gfx.make_image(&desc)
-			sampler:    sampler
+		for id in g_gl_surface_textures.keys() {
+			if id !in g_gl_surface_requests {
+				release_gl_surface_texture(g_gl_surface_textures[id] or { continue })
+				g_gl_surface_textures.delete(id)
+			}
+		}
+		for id, request in g_gl_surface_requests {
+			if current := g_gl_surface_textures[id] {
+				if current.gl_texture == request.gl_texture && current.width == request.width
+					&& current.height == request.height {
+					continue
+				}
+				release_gl_surface_texture(current)
+			}
+			g_gl_surface_textures[id] = make_gl_surface_texture(request)
 		}
 	}
 
