@@ -18,11 +18,11 @@ fn test_grid_layout_rejects_children_beyond_fixed_capacity() {
 
 fn test_grid_layout_distributes_space_with_padding_spacing_and_minimums() {
 	frames := grid_layout_frames(GridLayoutConfig{
-		frame: rect(0, 0, 230, 110)
-		columns: 2
-		padding: GridPadding{ left: 10, top: 8, right: 10, bottom: 8 }
-		spacing: GridSpacing{ horizontal: 10, vertical: 6 }
-		columns_minimum: {
+		frame:              rect(0, 0, 230, 110)
+		columns:            2
+		padding:            GridPadding{ left: 10, top: 8, right: 10, bottom: 8 }
+		spacing:            GridSpacing{ horizontal: 10, vertical: 6 }
+		columns_minimum:    {
 			0: 60.0
 			1: 80.0
 		}
@@ -34,13 +34,13 @@ fn test_grid_layout_distributes_space_with_padding_spacing_and_minimums() {
 
 fn test_grid_layout_can_force_default_axis_sizes() {
 	frames := grid_layout_frames(GridLayoutConfig{
-		frame: rect(0, 0, 300, 200)
-		columns: 2
+		frame:                rect(0, 0, 300, 200)
+		columns:              2
 		column_default_width: 60
-		row_default_height: 40
-		force_column_width: true
-		force_row_height: true
-		columns_minimum: {
+		row_default_height:   40
+		force_column_width:   true
+		force_row_height:     true
+		columns_minimum:      {
 			1: 80.0
 		}
 	}, 2) or { panic(err) }
@@ -49,8 +49,8 @@ fn test_grid_layout_can_force_default_axis_sizes() {
 
 fn test_grid_layout_supports_rows_and_reverse_column_major_flow() {
 	frames := grid_layout_frames(GridLayoutConfig{
-		frame: rect(0, 0, 200, 100)
-		rows: 2
+		frame:       rect(0, 0, 200, 100)
+		rows:        2
 		orientation: .bottom_to_top_right_to_left
 	}, 4) or { panic(err) }
 	assert frames == [rect(100, 50, 100, 50), rect(100, 0, 100, 50), rect(0, 50, 100, 50),
@@ -79,9 +79,9 @@ fn test_grid_layout_supports_all_fill_orientations() {
 
 fn test_grid_layout_replaces_child_frames_and_preserves_content() {
 	grid := grid_layout(
-		id: 'actions'
-		frame: rect(20, 30, 200, 80)
-		columns: 2
+		id:       'actions'
+		frame:    rect(20, 30, 200, 80)
+		columns:  2
 		children: [
 			button('one', 'One', Rect{}, BoxStyle{}, TextStyle{}),
 			button('two', 'Two', Rect{}, BoxStyle{}, TextStyle{}),

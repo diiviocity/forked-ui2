@@ -110,7 +110,7 @@ pub fn accordion_geometry(config AccordionConfig) !AccordionGeometry {
 		cursor += item_length
 	}
 	return AccordionGeometry{
-		items: items
+		items:   items
 		headers: headers
 		content: content
 	}
@@ -140,9 +140,9 @@ pub fn accordion(config AccordionConfig) !Element {
 			} else {
 				config.header_box
 			}, if active { config.active_header_text_style } else { config.header_text_style })
-			action_id: item.action_id
-			enabled: item.enabled
-			accessibility_role: 'button'
+			action_id:           item.action_id
+			enabled:             item.enabled
+			accessibility_role:  'button'
 			accessibility_value: if active { 'expanded' } else { 'collapsed' }
 		}
 	}
