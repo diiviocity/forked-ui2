@@ -153,6 +153,7 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 	__global g_key_event_handler = KeyEventFn(unsafe { nil })
 	__global g_scroll_handler = ScrollFn(unsafe { nil })
 	__global g_drop_handler = DropFn(unsafe { nil })
+	__global g_pointer_move_handler = PointerMoveFn(unsafe { nil })
 	__global g_key_consumed = false
 	__global g_gg_app = &GgApp{}
 	__global g_text_values = map[string]string{}
@@ -378,6 +379,11 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 
 	pub fn on_drop(handler DropFn) {
 		g_drop_handler = handler
+	}
+
+	// on_pointer_move reports every pointer move over the window, wherever it lands.
+	pub fn on_pointer_move(handler PointerMoveFn) {
+		g_pointer_move_handler = handler
 	}
 
 	pub fn text(id string) string {
@@ -782,6 +788,9 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 				// Recorded before any handler below can claim the move, so the
 				// tooltip always knows where the pointer is.
 				g_tooltip.pointer_moved(f64(e.mouse_x), f64(e.mouse_y), time.ticks())
+				if voidptr(g_pointer_move_handler) != unsafe { nil } {
+					g_pointer_move_handler(f64(e.mouse_x), f64(e.mouse_y))
+				}
 				g_hover_pointer = HoverPointer{
 					x: f64(e.mouse_x)
 					y: f64(e.mouse_y)

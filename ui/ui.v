@@ -190,6 +190,9 @@ pub type ScrollFn = fn (string)
 // window, plus the pointer location in root-view coordinates.
 pub type DropFn = fn (DropEvent)
 
+// PointerMoveFn receives the pointer position, in logical units, on every move.
+pub type PointerMoveFn = fn (x f64, y f64)
+
 pub struct DropEvent {
 pub:
 	paths []string
