@@ -153,6 +153,8 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 	__global g_key_event_handler = KeyEventFn(unsafe { nil })
 	__global g_scroll_handler = ScrollFn(unsafe { nil })
 	__global g_drop_handler = DropFn(unsafe { nil })
+	__global g_mouse_button_handler = MouseButtonFn(unsafe { nil })
+	__global g_wheel_handler = WheelFn(unsafe { nil })
 	__global g_key_consumed = false
 	__global g_gg_app = &GgApp{}
 	__global g_text_values = map[string]string{}
@@ -374,6 +376,21 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 
 	pub fn on_scroll(handler ScrollFn) {
 		g_scroll_handler = handler
+	}
+
+	// MouseButtonFn reports raw mouse button transitions in window points:
+	// button 0 left, 1 right, 2 middle; down true on press, false on release.
+	pub type MouseButtonFn = fn (button int, down bool, x f64, y f64)
+
+	pub fn on_mouse_button(handler MouseButtonFn) {
+		g_mouse_button_handler = handler
+	}
+
+	// WheelFn reports raw wheel deltas before any scroll element sees them.
+	pub type WheelFn = fn (dx f64, dy f64)
+
+	pub fn on_wheel(handler WheelFn) {
+		g_wheel_handler = handler
 	}
 
 	pub fn on_drop(handler DropFn) {
@@ -772,6 +789,9 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 		}
 		match e.typ {
 			.mouse_down {
+				if voidptr(g_mouse_button_handler) != unsafe { nil } {
+					g_mouse_button_handler(int(e.mouse_button), true, f64(e.mouse_x), f64(e.mouse_y))
+				}
 				g_tooltip.dismiss()
 				if menu_bar_handle_down(f64(e.mouse_x), f64(e.mouse_y)) {
 					return
@@ -806,6 +826,9 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 				// The content moves under a pointer that stays put, so whatever
 				// ends up beneath it waits for a fresh rest.
 				g_tooltip.restart(time.ticks())
+				if voidptr(g_wheel_handler) != unsafe { nil } {
+					g_wheel_handler(f64(e.scroll_x), f64(e.scroll_y))
+				}
 				if menu_bar_open() {
 					return
 				}
@@ -826,6 +849,9 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 				update_hover()
 			}
 			.mouse_up {
+				if voidptr(g_mouse_button_handler) != unsafe { nil } {
+					g_mouse_button_handler(int(e.mouse_button), false, f64(e.mouse_x), f64(e.mouse_y))
+				}
 				if g_touch.down && g_touch.pointer_target.action_id.len > 0 {
 					handle_touch_up(f64(e.mouse_x), f64(e.mouse_y))
 					return
