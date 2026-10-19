@@ -4,6 +4,11 @@ pub type BuildFn = fn () Element
 
 pub type EventFn = fn (string)
 
+// GlSurfaceFn draws into an `opengl` element once the UI has been drawn. frame
+// is in logical units; multiply by scale for framebuffer pixels. height is the
+// window height in logical units, for flipping to OpenGL's bottom-left origin.
+pub type GlSurfaceFn = fn (id string, frame Rect, scale f64, height f64)
+
 // KeyFn receives normalized key strings: 'up', 'forward_delete', 'tab',
 // 'cmd+shift+r', 'f5', or text-view commands like 'text:editor:backspace'
 // and 'text:editor:line_break'.
@@ -249,6 +254,7 @@ pub enum Kind {
 	slider
 	switch_control
 	toggle_button
+	opengl
 }
 
 // MenuEntry is one right-click context menu item attached to an element.
@@ -761,6 +767,14 @@ pub fn image(id string, path string, frame Rect) Element {
 		kind: .image
 		id: id
 		image_path: path
+		frame: frame
+	}
+}
+
+pub fn opengl(id string, frame Rect) Element {
+	return Element{
+		kind: .opengl
+		id: id
 		frame: frame
 	}
 }

@@ -216,6 +216,8 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 	__global g_font_symbol_bases = map[int]bool{}
 	__global g_font_symbol_fons = voidptr(unsafe { nil })
 	__global g_active_images = map[string]bool{}
+	__global g_opengl_surface_frames = map[string]Rect{}
+	__global g_gl_surface_renderer = GlSurfaceFn(unsafe { nil })
 	__global g_open_dropdown = ''
 	__global g_dropdown_popup = DropdownPopup{}
 	__global g_dropdown_hover = -1
@@ -736,6 +738,7 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 			preload_images(root)
 			has_root = true
 		}
+		g_opengl_surface_frames = map[string]Rect{}
 		ctx.begin()
 		if has_root {
 			g_dropdown_popup.mounted = false
@@ -761,6 +764,13 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 		}
 		check_long_press()
 		ctx.end()
+		// Surfaces are drawn last, over the UI, against the back buffer that
+		// Sokol presents once this frame returns.
+		if voidptr(g_gl_surface_renderer) != unsafe { nil } {
+			for id, frame in g_opengl_surface_frames {
+				g_gl_surface_renderer(id, frame, f64(ctx.scale), f64(ctx.height))
+			}
+		}
 	}
 
 	fn on_event(e &gg.Event, _ &GgApp) {
@@ -2330,6 +2340,28 @@ fn page_focused_text_area(direction int) {
 					el.text_style, clip)
 				add_full_text_tooltip(el, area, clip, el.text, shortened)
 			}
+			.opengl {
+				x := el.frame.x + off_x
+				y := el.frame.y + off_y
+				// Draw a simple filled circle as the GL widget content.
+				r := math.min(el.frame.width, el.frame.height) / 2.0
+				draw_rect(ctx, x, y, el.frame.width, el.frame.height, 0x3498db, r)
+				if el.id.len > 0 {
+					register_gl_surface(el.id, x, y, el.frame.width, el.frame.height)
+				}
+				if el.enabled && element_action_id(el).len > 0 && (el.clickable || el.draggable) {
+					add_hit_target(HitTarget{
+						id: el.id
+						action_id: element_action_id(el)
+						x: x
+						y: y
+						w: el.frame.width
+						h: el.frame.height
+						clickable: el.clickable
+						draggable: el.draggable
+					}, clip)
+				}
+			}
 			.image {
 				x := el.frame.x + off_x
 				y := el.frame.y + off_y
@@ -2823,6 +2855,18 @@ fn page_focused_text_area(direction int) {
 			h: visible.height
 		}
 	}
+
+	fn register_gl_surface(id string, x f64, y f64, w f64, h f64) {
+		g_opengl_surface_frames[id] = Rect{x: x, y: y, width: w, height: h}
+	}
+
+	// set_gl_surface_renderer installs the function that draws every `opengl`
+	// element after the UI. It runs on the UI thread with the GL context current.
+	pub fn set_gl_surface_renderer(renderer GlSurfaceFn) {
+		g_gl_surface_renderer = renderer
+	}
+
+
 
 	fn draw_cached_image(ctx &gg.Context, path string, x f64, y f64, width f64, height f64, rotation f64) bool {
 		if !cache_image(path) { return false }
