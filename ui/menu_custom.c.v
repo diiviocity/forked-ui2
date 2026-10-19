@@ -56,12 +56,25 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 	// A press that only dismissed an open menu must not let the matching
 	// release reach the control underneath it.
 	__global g_menu_swallow_up = false
+	__global g_menu_bar_hidden = false
 
 	// menu_bar_height is the strip the bar takes off the top of the window.
 	// bounds() subtracts it and the screen is drawn below it, so an element at
 	// y 0 sits under the bar rather than behind it.
 	fn menu_bar_height() f64 {
-		return if menu_bar().len == 0 { 0.0 } else { menubar_height }
+		return if g_menu_bar_hidden || menu_bar().len == 0 { 0.0 } else { menubar_height }
+	}
+
+	// set_menu_bar_hidden hides the bar without removing its menus. While hidden the
+	// bar takes no room, draws nothing and takes no clicks; the content uses the whole
+	// window. The native desktop backends keep their own bar, so this only affects the
+	// custom renderer.
+	pub fn set_menu_bar_hidden(hidden bool) {
+		g_menu_bar_hidden = hidden
+	}
+
+	pub fn menu_bar_hidden() bool {
+		return g_menu_bar_hidden
 	}
 
 	fn menu_bar_open() bool {
@@ -126,6 +139,9 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 		menus := menu_bar()
 		g_menu_hits = []MenuBarHit{}
 		g_menu_panels = []Rect{}
+		if g_menu_bar_hidden {
+			return
+		}
 		if menus.len == 0 {
 			return
 		}
@@ -344,7 +360,7 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 	// act on release, the way both platform menus do, so a press-drag-release
 	// selects in one gesture.
 	fn menu_bar_handle_down(x f64, y f64) bool {
-		if menu_bar().len == 0 {
+		if g_menu_bar_hidden || menu_bar().len == 0 {
 			return false
 		}
 		if hit := menu_bar_hit_at(x, y) {
@@ -368,7 +384,7 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 	}
 
 	fn menu_bar_handle_move(x f64, y f64) bool {
-		if !menu_bar_open() {
+		if g_menu_bar_hidden || !menu_bar_open() {
 			return false
 		}
 		hit := menu_bar_hit_at(x, y) or {

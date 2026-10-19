@@ -1348,6 +1348,7 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 			ctrl: e.modifiers & u32(gg.Modifier.ctrl) != 0
 			alt: e.modifiers & u32(gg.Modifier.alt) != 0
 			cmd: e.modifiers & u32(gg.Modifier.super) != 0
+			repeat: e.key_repeat
 		}
 	}
 

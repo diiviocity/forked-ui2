@@ -143,11 +143,12 @@ pub enum KeyCode {
 
 pub struct KeyEvent {
 pub:
-	code  KeyCode
-	shift bool
-	ctrl  bool
-	alt   bool
-	cmd   bool
+	code   KeyCode
+	shift  bool
+	ctrl   bool
+	alt    bool
+	cmd    bool
+	repeat bool // an autorepeat of a key that is still held
 }
 
 // name returns the normalized key name used by the legacy KeyFn callback.
