@@ -1117,8 +1117,8 @@ ui2.set_gl_surface_renderer(fn (id string, frame ui2.Rect, scale f64, height f64
 })
 ```
 
-A new element first gets its texture one frame after it appears. The
-`examples/opengl_demo` shows the element without a texture.
+A new element first gets its texture one frame after it appears.
+`examples/opengl_demo` renders a colour that cycles over time into the element.
 
 ## Keyboard events
 
