@@ -64,7 +64,7 @@ fn (mut s Surface) resize(w int, h int) {
 
 // draw paints the surface with a colour that cycles over time and hands the texture
 // to ui2. It runs before each frame, with the GL context current.
-fn (mut s Surface) draw(id string, frame ui2.Rect, scale f64, height f64) {
+fn (mut s Surface) draw(id string, frame ui2.Rect, scale f64, _ f64) {
 	if id != 'gl_surface' {
 		return
 	}
