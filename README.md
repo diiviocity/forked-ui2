@@ -1094,6 +1094,32 @@ Run `v run examples/charts/main.v` to see all five chart types in a layout that
 adapts to the window width. Add `-d ui2_custom_rendering` to try the custom
 renderer on macOS or Windows.
 
+## OpenGL surfaces
+
+`opengl(id, frame)` reserves a rectangle for content an application renders with
+OpenGL, such as a video frame. The gg renderer (Linux, Android and custom-rendered
+desktop builds) draws it; native backends show it as a transparent view.
+
+`set_gl_surface_renderer` installs a function that runs before every frame, on the
+UI thread with the GL context current, once for each `opengl` element drawn in the
+previous frame. Render into a framebuffer there, then hand ui2 the texture with
+`set_gl_surface_texture(id, texture, width, height)`, sizes in pixels. ui2 draws the
+texture as a quad over the element's frame, in the normal UI pass, so menus and other
+overlays draw above it. A texture whose element is no longer drawn is released before
+the next frame.
+
+```v
+ui2.set_gl_surface_renderer(fn (id string, frame ui2.Rect, scale f64, height f64) {
+	if id == 'video' {
+		// ... render into the framebuffer that owns `texture`, sized w x h pixels ...
+		ui2.set_gl_surface_texture(id, texture, w, h)
+	}
+})
+```
+
+A new element first gets its texture one frame after it appears. The
+`examples/opengl_demo` shows the element without a texture.
+
 ## Keyboard events
 
 Use `on_key_event` when a shortcut should follow a physical key across keyboard
