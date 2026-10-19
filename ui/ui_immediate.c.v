@@ -153,7 +153,6 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 	__global g_key_event_handler = KeyEventFn(unsafe { nil })
 	__global g_scroll_handler = ScrollFn(unsafe { nil })
 	__global g_drop_handler = DropFn(unsafe { nil })
-	__global g_pointer_move_handler = PointerMoveFn(unsafe { nil })
 	__global g_key_consumed = false
 	__global g_gg_app = &GgApp{}
 	__global g_text_values = map[string]string{}
@@ -379,11 +378,6 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 
 	pub fn on_drop(handler DropFn) {
 		g_drop_handler = handler
-	}
-
-	// on_pointer_move reports every pointer move over the window, wherever it lands.
-	pub fn on_pointer_move(handler PointerMoveFn) {
-		g_pointer_move_handler = handler
 	}
 
 	pub fn text(id string) string {
