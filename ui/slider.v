@@ -13,7 +13,11 @@ pub:
 	value_track_color u32 = 0x93c5fd
 	thumb_color       u32 = 0x2563eb
 	track_width       f64 = 4.0
-	thumb_size        f64 = 20.0
+	// The thumb is a square of this size drawn centred on the value, so it
+	// overhangs the track by half its size at either end. Zero keeps the
+	// default; a negative size draws no thumb at all, for a slider that shows a
+	// bare track.
+	thumb_size f64 = 20.0
 }
 
 pub struct SliderConfig {
