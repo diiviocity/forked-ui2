@@ -9,6 +9,7 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 	import gg
 	import math
 	import os
+	import sokol.gfx
 	import sokol.sapp
 	import sokol.sgl
 	import time
@@ -68,6 +69,16 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 		// Which scroller a scrollbar drag holds: the one along the bottom when set.
 		scrollbar_horizontal bool
 		scrollbar_grab_x     f64
+	}
+
+	// GlSurfaceTexture wraps a GL texture the application renders into, as a sokol
+	// image, so an `opengl` element is an ordinary textured quad in the UI's pass.
+	struct GlSurfaceTexture {
+		gl_texture u32
+		width      int
+		height     int
+		image      gfx.Image
+		sampler    gfx.Sampler
 	}
 
 	struct GgApp {
@@ -218,6 +229,7 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 	__global g_active_images = map[string]bool{}
 	__global g_opengl_surface_frames = map[string]Rect{}
 	__global g_gl_surface_renderer = GlSurfaceFn(unsafe { nil })
+	__global g_gl_surface_textures = map[string]GlSurfaceTexture{}
 	__global g_open_dropdown = ''
 	__global g_dropdown_popup = DropdownPopup{}
 	__global g_dropdown_hover = -1
@@ -738,6 +750,11 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 			preload_images(root)
 			has_root = true
 		}
+		if voidptr(g_gl_surface_renderer) != unsafe { nil } {
+			for id, frame in g_opengl_surface_frames {
+				g_gl_surface_renderer(id, frame, f64(ctx.scale), f64(ctx.height))
+			}
+		}
 		g_opengl_surface_frames = map[string]Rect{}
 		ctx.begin()
 		if has_root {
@@ -764,13 +781,6 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 		}
 		check_long_press()
 		ctx.end()
-		// Surfaces are drawn last, over the UI, against the back buffer that
-		// Sokol presents once this frame returns.
-		if voidptr(g_gl_surface_renderer) != unsafe { nil } {
-			for id, frame in g_opengl_surface_frames {
-				g_gl_surface_renderer(id, frame, f64(ctx.scale), f64(ctx.height))
-			}
-		}
 	}
 
 	fn on_event(e &gg.Event, _ &GgApp) {
@@ -2343,9 +2353,13 @@ fn page_focused_text_area(direction int) {
 			.opengl {
 				x := el.frame.x + off_x
 				y := el.frame.y + off_y
-				// Draw a simple filled circle as the GL widget content.
-				r := math.min(el.frame.width, el.frame.height) / 2.0
-				draw_rect(ctx, x, y, el.frame.width, el.frame.height, 0x3498db, r)
+				if tex := g_gl_surface_textures[el.id] {
+					draw_gl_surface_quad(tex, x, y, el.frame.width, el.frame.height)
+				} else {
+					// Until the application supplies a texture, show a blue disc.
+					r := math.min(el.frame.width, el.frame.height) / 2.0
+					draw_rect(ctx, x, y, el.frame.width, el.frame.height, 0x3498db, r)
+				}
 				if el.id.len > 0 {
 					register_gl_surface(el.id, x, y, el.frame.width, el.frame.height)
 				}
@@ -2864,6 +2878,53 @@ fn page_focused_text_area(direction int) {
 	// element after the UI. It runs on the UI thread with the GL context current.
 	pub fn set_gl_surface_renderer(renderer GlSurfaceFn) {
 		g_gl_surface_renderer = renderer
+	}
+
+	// set_gl_surface_texture shows gl_texture, a GL texture of width x height pixels,
+	// in the `opengl` element with this id. Call it from the surface renderer, which
+	// runs before the frame is built, so the texture is wrapped before it is drawn.
+	pub fn set_gl_surface_texture(id string, gl_texture u32, width int, height int) {
+		mut sampler := gfx.Sampler{}
+		if current := g_gl_surface_textures[id] {
+			if current.gl_texture == gl_texture && current.width == width
+				&& current.height == height {
+				return
+			}
+			gfx.destroy_image(current.image)
+			sampler = current.sampler
+		} else {
+			sampler = gfx.make_sampler(&gfx.SamplerDesc{
+				min_filter: .linear
+				mag_filter: .linear
+			})
+		}
+		mut desc := gfx.ImageDesc{
+			width:        width
+			height:       height
+			pixel_format: .rgba8
+		}
+		desc.gl_textures[0] = gl_texture
+		g_gl_surface_textures[id] = GlSurfaceTexture{
+			gl_texture: gl_texture
+			width:      width
+			height:     height
+			image:      gfx.make_image(&desc)
+			sampler:    sampler
+		}
+	}
+
+	// draw_gl_surface_quad draws the texture over the element's frame. Texture rows run
+	// bottom-up, so the top edge of the frame takes the texture's top row at v = 1.
+	fn draw_gl_surface_quad(tex GlSurfaceTexture, x f64, y f64, w f64, h f64) {
+		sgl.enable_texture()
+		sgl.texture(tex.image, tex.sampler)
+		sgl.begin_quads()
+		sgl.v2f_t2f_c4f(f32(x), f32(y), 0, 1, 1, 1, 1, 1)
+		sgl.v2f_t2f_c4f(f32(x + w), f32(y), 1, 1, 1, 1, 1, 1)
+		sgl.v2f_t2f_c4f(f32(x + w), f32(y + h), 1, 0, 1, 1, 1, 1)
+		sgl.v2f_t2f_c4f(f32(x), f32(y + h), 0, 0, 1, 1, 1, 1)
+		sgl.end()
+		sgl.disable_texture()
 	}
 
 
