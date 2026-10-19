@@ -1120,6 +1120,18 @@ ui2.set_gl_surface_renderer(fn (id string, frame ui2.Rect, scale f64, height f64
 A new element first gets its texture one frame after it appears.
 `examples/opengl_demo` renders a colour that cycles over time into the element.
 
+## Window input
+
+`on_pointer_move` reports every pointer move over the window, wherever it lands, in
+logical units. The custom renderer delivers it; native backends do not yet.
+
+`set_menu_bar_hidden(true)` hides the menu bar in the custom renderer: it takes no
+room, draws nothing and takes no clicks. Native menu bars are not hidden. Read the
+state with `menu_bar_hidden()`.
+
+`KeyEvent.repeat` is true for an autorepeat of a key that is still held, so an
+application can act on the first press only.
+
 ## Keyboard events
 
 Use `on_key_event` when a shortcut should follow a physical key across keyboard
