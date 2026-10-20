@@ -1041,17 +1041,19 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 			moved: false
 			long_press_fired: false
 		}
-		if g_refresh_mode == .on_demand {
-			// check_long_press fires from inside drawn frames, and after the
-			// last input event only a few trailing frames follow; the ask keeps
-			// a frame alive past the deadline so the hold is not forgotten.
-			after(0.55, fn () {})
-		}
 		if g_open_dropdown.len > 0 {
 			update_dropdown_hover(x, y)
 			return
 		}
 		target := hit_test(x, y)
+		if g_refresh_mode == .on_demand && target.long_press {
+			// check_long_press fires from inside drawn frames, and after the
+			// last input event only a few trailing frames follow; the ask keeps
+			// a frame alive past the deadline so the hold is not forgotten.
+			// Only long-press targets need it, so taps on everything else let
+			// the window go back to sleep.
+			after(0.55, fn () {})
+		}
 		if target.slider {
 			commit_slider(target, x, y)
 			return
