@@ -84,7 +84,7 @@ mut:
 	// name to build a macOS application menu from, and the native handle a
 	// Win32 menu bar attaches to — without depending on one backend's state.
 	dispatch EventFn = EventFn(unsafe { nil })
-	app_name string = 'App'
+	app_name string  = 'App'
 	window   voidptr
 }
 
@@ -137,7 +137,7 @@ fn install_declared_menus() {
 // menu_item builds a plain row that emits `id` when chosen.
 pub fn menu_item(id string, title string) MenuItem {
 	return MenuItem{
-		id: id
+		id:    id
 		title: title
 	}
 }
@@ -146,8 +146,8 @@ pub fn menu_item(id string, title string) MenuItem {
 // menu_item_with_shortcut('new', 'New', 'cmd+n').
 pub fn menu_item_with_shortcut(id string, title string, shortcut string) MenuItem {
 	return MenuItem{
-		id: id
-		title: title
+		id:       id
+		title:    title
 		shortcut: shortcut
 	}
 }
@@ -156,8 +156,8 @@ pub fn menu_item_with_shortcut(id string, title string, shortcut string) MenuIte
 // remembered: rebuild the menu bar with the new value after handling the event.
 pub fn menu_check_item(id string, title string, checked bool) MenuItem {
 	return MenuItem{
-		id: id
-		title: title
+		id:      id
+		title:   title
 		checked: checked
 	}
 }
@@ -186,7 +186,9 @@ pub fn disabled(item MenuItem) MenuItem {
 
 // set_menu_bar installs the application's top level menu bar, replacing any
 // previous one. Call it before or after run_window: menus declared before the
-// window exists are installed as the application finishes launching.
+// window exists are installed as the application finishes launching. A call
+// from a thread or between frames asks for the frame that shows the bar; a
+// call from inside the frame being built is covered by that frame already.
 pub fn set_menu_bar(menus []Menu) {
 	mut st := menu_state()
 	st.menus = menus.clone()
@@ -306,11 +308,11 @@ pub fn parse_menu_shortcut(shortcut string) MenuShortcut {
 		}
 	}
 	return MenuShortcut{
-		cmd: cmd
-		ctrl: ctrl
-		alt: alt
+		cmd:   cmd
+		ctrl:  ctrl
+		alt:   alt
 		shift: shift
-		key: key
+		key:   key
 	}
 }
 

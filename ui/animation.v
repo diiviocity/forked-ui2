@@ -70,8 +70,8 @@ pub:
 // example, "slider_style.thumb_size") are accepted.
 pub fn animation_number_property(name string, target f64) AnimationProperty {
 	return AnimationProperty{
-		name: name
-		kind: .number
+		name:   name
+		kind:   .number
 		number: target
 	}
 }
@@ -79,8 +79,8 @@ pub fn animation_number_property(name string, target f64) AnimationProperty {
 // animation_color_property creates a target for a color Element property.
 pub fn animation_color_property(name string, target u32) AnimationProperty {
 	return AnimationProperty{
-		name: name
-		kind: .color
+		name:  name
+		kind:  .color
 		color: target
 	}
 }
@@ -107,8 +107,8 @@ type AnimationRefreshFn = fn ()
 // on every frame.
 pub struct AnimationConfig {
 pub:
-	duration        f64 = 1.0
-	transition      AnimationTransition = .linear
+	duration        f64                   = 1.0
+	transition      AnimationTransition   = .linear
 	transition_fn   AnimationTransitionFn = unsafe { nil }
 	step            f64
 	repeat          bool
@@ -165,7 +165,7 @@ mut:
 	children      []Animation
 	properties    []string
 	transition_fn AnimationTransitionFn = unsafe { nil }
-	on_event      AnimationEventFn = unsafe { nil }
+	on_event      AnimationEventFn      = unsafe { nil }
 }
 
 pub enum AnimationStatus {
@@ -223,33 +223,33 @@ pub fn animation(config AnimationConfig) Animation {
 	duration := math.max(0.0, config.duration)
 	step := math.max(0.0, config.step)
 	return Animation{
-		kind: .tween
-		duration: duration
-		transition: config.transition
+		kind:          .tween
+		duration:      duration
+		transition:    config.transition
 		transition_fn: config.transition_fn
-		step: step
-		repeat: config.repeat
-		on_event: config.on_event
-		properties: properties
-		targets: AnimationTargets{
-			x: config.x
-			y: config.y
-			width: config.width
-			height: config.height
-			rotation: config.rotation
-			background: config.background
-			corner_radius: config.corner_radius
-			text_color: config.text_color
+		step:          step
+		repeat:        config.repeat
+		on_event:      config.on_event
+		properties:    properties
+		targets:       AnimationTargets{
+			x:               config.x
+			y:               config.y
+			width:           config.width
+			height:          config.height
+			rotation:        config.rotation
+			background:      config.background
+			corner_radius:   config.corner_radius
+			text_color:      config.text_color
 			text_background: config.text_background
-			font_size: config.font_size
-			padding_left: config.padding_left
-			properties: normalized_animation_properties(config.properties)
+			font_size:       config.font_size
+			padding_left:    config.padding_left
+			properties:      normalized_animation_properties(config.properties)
 		}
 	}
 }
 
 // + composes two animations sequentially.
-pub fn (left Animation) +(right Animation) Animation {
+pub fn (left Animation) + (right Animation) Animation {
 	return sequence(left, right)
 }
 
@@ -262,10 +262,10 @@ pub fn sequence(animations ...Animation) Animation {
 		properties = merge_property_names(properties, child.properties)
 	}
 	return Animation{
-		kind: .sequence
-		duration: duration
+		kind:       .sequence
+		duration:   duration
 		transition: .linear
-		children: animations
+		children:   animations
 		properties: properties
 	}
 }
@@ -281,10 +281,10 @@ pub fn parallel(animations ...Animation) Animation {
 		properties = merge_property_names(properties, child.properties)
 	}
 	return Animation{
-		kind: .parallel
-		duration: duration
+		kind:       .parallel
+		duration:   duration
 		transition: .linear
-		children: animations
+		children:   animations
 		properties: properties
 	}
 }
@@ -354,10 +354,10 @@ pub fn animation_info(id string) AnimationInfo {
 		return AnimationInfo{}
 	}
 	info := AnimationInfo{
-		status: animation_run.status
-		progress: animation_run.progress
-		duration: animation_run.definition.duration
-		repeat: animation_run.definition.repeat
+		status:              animation_run.status
+		progress:            animation_run.progress
+		duration:            animation_run.definition.duration
+		repeat:              animation_run.definition.repeat
 		animated_properties: active_animation_properties(animation_run)
 	}
 	runtime.mutex.unlock()
@@ -532,7 +532,12 @@ fn canonical_animation_property_name(name string) string {
 
 fn animation_property_kind_matches(name string, kind AnimationPropertyKind) bool {
 	return match name {
-		'background', 'box.border_color', 'box.shadow.color', 'text_color', 'text_background', 'slider_style.track_color', 'slider_style.value_track_color', 'slider_style.thumb_color', 'switch_style.inactive_track_color', 'switch_style.active_track_color', 'switch_style.thumb_color', 'switch_style.disabled_track_color', 'switch_style.disabled_thumb_color', 'toggle_down_box.bg', 'toggle_down_box.border_color', 'toggle_down_text_style.color', 'toggle_down_text_style.background_color' {
+		'background', 'box.border_color', 'box.shadow.color', 'text_color', 'text_background',
+		'slider_style.track_color', 'slider_style.value_track_color', 'slider_style.thumb_color',
+		'switch_style.inactive_track_color', 'switch_style.active_track_color',
+		'switch_style.thumb_color', 'switch_style.disabled_track_color',
+		'switch_style.disabled_thumb_color', 'toggle_down_box.bg', 'toggle_down_box.border_color',
+		'toggle_down_text_style.color', 'toggle_down_text_style.background_color' {
 			kind == .color
 		}
 		else { kind == .number }
@@ -575,14 +580,14 @@ fn start_widget_animation_at(id string, definition Animation, now i64, schedule 
 		retained = merge_property_names(previous.retained, retained)
 	}
 	runtime.runs[id] = AnimationRun{
-		definition: definition
-		started_at: now
-		retained: retained
+		definition:  definition
+		started_at:  now
+		retained:    retained
 		initialized: initialized
-		start: start
-		last: start
-		status: .running
-		suppressed: map[string]bool{}
+		start:       start
+		last:        start
+		status:      .running
+		suppressed:  map[string]bool{}
 	}
 	runtime.mutex.unlock()
 	if schedule {
@@ -621,9 +626,9 @@ fn finish_animation(id string, property string, completing bool) {
 		if completing && voidptr(animation_run.definition.on_event) != unsafe { nil } {
 			pending << PendingAnimationEvent{
 				callback: animation_run.definition.on_event
-				event: AnimationEvent{
-					kind: .complete
-					id: id
+				event:    AnimationEvent{
+					kind:     .complete
+					id:       id
 					progress: animation_run.progress
 				}
 			}
@@ -761,9 +766,9 @@ fn apply_widget_animation_node(declared Element, now i64, mut pending []PendingA
 		if voidptr(animation_run.definition.on_event) != unsafe { nil } {
 			pending << PendingAnimationEvent{
 				callback: animation_run.definition.on_event
-				event: AnimationEvent{
+				event:    AnimationEvent{
 					kind: .start
-					id: declared.id
+					id:   declared.id
 				}
 			}
 		}
@@ -804,9 +809,9 @@ fn apply_widget_animation_node(declared Element, now i64, mut pending []PendingA
 			&& animation_run.progress != previous_progress {
 			pending << PendingAnimationEvent{
 				callback: animation_run.definition.on_event
-				event: AnimationEvent{
-					kind: .progress
-					id: declared.id
+				event:    AnimationEvent{
+					kind:     .progress
+					id:       declared.id
 					progress: animation_run.progress
 				}
 			}
@@ -816,9 +821,9 @@ fn apply_widget_animation_node(declared Element, now i64, mut pending []PendingA
 			if voidptr(animation_run.definition.on_event) != unsafe { nil } {
 				pending << PendingAnimationEvent{
 					callback: animation_run.definition.on_event
-					event: AnimationEvent{
-						kind: .complete
-						id: declared.id
+					event:    AnimationEvent{
+						kind:     .complete
+						id:       declared.id
 						progress: 1.0
 					}
 				}
@@ -994,25 +999,25 @@ fn apply_animation_targets(start Element, targets AnimationTargets, progress f64
 	}
 	mut result := Element{
 		...start
-		frame: Rect{
+		frame:        Rect{
 			...start.frame
-			x: x
-			y: y
-			width: width
+			x:      x
+			y:      y
+			width:  width
 			height: height
 		}
-		box: BoxStyle{
+		box:          BoxStyle{
 			...start.box
-			bg: background
+			bg:     background
 			radius: corner_radius
 		}
-		text_style: TextStyle{
+		text_style:   TextStyle{
 			...start.text_style
-			color: text_color
+			color:            text_color
 			background_color: text_background
-			size: font_size
+			size:             font_size
 		}
-		rotation: rotation
+		rotation:     rotation
 		padding_left: padding_left
 	}
 	for property in targets.properties {
@@ -1261,21 +1266,21 @@ fn set_color_animation_property(element Element, property string, value u32) Ele
 fn merge_animation_properties(base Element, values Element, properties []string) Element {
 	mut result := Element{
 		...base
-		frame: Rect{
+		frame:        Rect{
 			...base.frame
-			x: if 'x' in properties { values.frame.x } else { base.frame.x }
-			y: if 'y' in properties { values.frame.y } else { base.frame.y }
-			width: if 'width' in properties { values.frame.width } else { base.frame.width }
+			x:      if 'x' in properties { values.frame.x } else { base.frame.x }
+			y:      if 'y' in properties { values.frame.y } else { base.frame.y }
+			width:  if 'width' in properties { values.frame.width } else { base.frame.width }
 			height: if 'height' in properties { values.frame.height } else { base.frame.height }
 		}
-		box: BoxStyle{
+		box:          BoxStyle{
 			...base.box
-			bg: if 'background' in properties { values.box.bg } else { base.box.bg }
+			bg:     if 'background' in properties { values.box.bg } else { base.box.bg }
 			radius: if 'corner_radius' in properties { values.box.radius } else { base.box.radius }
 		}
-		text_style: TextStyle{
+		text_style:   TextStyle{
 			...base.text_style
-			color: if 'text_color' in properties {
+			color:            if 'text_color' in properties {
 				values.text_style.color
 			} else {
 				base.text_style.color
@@ -1285,13 +1290,13 @@ fn merge_animation_properties(base Element, values Element, properties []string)
 			} else {
 				base.text_style.background_color
 			}
-			size: if 'font_size' in properties {
+			size:             if 'font_size' in properties {
 				values.text_style.size
 			} else {
 				base.text_style.size
 			}
 		}
-		rotation: if 'rotation' in properties { values.rotation } else { base.rotation }
+		rotation:     if 'rotation' in properties { values.rotation } else { base.rotation }
 		padding_left: if 'padding_left' in properties {
 			values.padding_left
 		} else {

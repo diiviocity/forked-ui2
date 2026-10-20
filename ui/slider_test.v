@@ -35,20 +35,20 @@ fn test_slider_maps_horizontal_and_vertical_pointer_coordinates() {
 
 fn test_slider_constructor_exposes_state_style_and_accessibility() {
 	el := slider(
-		id: 'volume'
-		action_id: 'volume_changed'
-		frame: rect(4, 8, 240, 32)
-		min: -20
-		max: 100
-		value: 140
-		step: 5
+		id:          'volume'
+		action_id:   'volume_changed'
+		frame:       rect(4, 8, 240, 32)
+		min:         -20
+		max:         100
+		value:       140
+		step:        5
 		value_track: true
-		style: SliderStyle{
-			track_color: 0x111827
+		style:       SliderStyle{
+			track_color:       0x111827
 			value_track_color: 0x22c55e
-			thumb_color: 0xf8fafc
-			track_width: 6
-			thumb_size: 24
+			thumb_color:       0xf8fafc
+			track_width:       6
+			thumb_size:        24
 		}
 	)
 

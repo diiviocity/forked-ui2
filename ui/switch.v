@@ -48,14 +48,14 @@ fn switch_thumb_frame(track Rect, active bool) Rect {
 // live backend value during the action callback.
 pub fn switch_control(config SwitchConfig) Element {
 	return Element{
-		kind: .switch_control
-		id: config.id
-		action_id: config.action_id
-		frame: config.frame
-		checked: config.active
-		switch_style: config.style
-		enabled: config.enabled
-		accessibility_role: 'switch'
+		kind:                .switch_control
+		id:                  config.id
+		action_id:           config.action_id
+		frame:               config.frame
+		checked:             config.active
+		switch_style:        config.style
+		enabled:             config.enabled
+		accessibility_role:  'switch'
 		accessibility_label: if config.accessibility_label.len > 0 {
 			config.accessibility_label
 		} else {

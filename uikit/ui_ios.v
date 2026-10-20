@@ -101,9 +101,9 @@ __global g_view_translation_x = map[voidptr]f64{}
 pub fn bounds() Rect {
 	b := macos.msg_rect(macos.msg_id(macos.get_class('UIScreen'), 'mainScreen'), 'bounds')
 	return Rect{
-		x: b.x
-		y: b.y
-		width: b.width
+		x:      b.x
+		y:      b.y
+		width:  b.width
 		height: b.height
 	}
 }
@@ -149,6 +149,12 @@ pub fn request_refresh() {
 		return
 	}
 	macos.msg_void_sel_id_bool(g_button_handler, 'performSelectorOnMainThread:withObject:waitUntilDone:', macos.sel('vuiRefresh:'), objc_nil(), false)
+}
+
+// refresh_on_demand reports whether the window redraws only when asked. The
+// UIKit backend rebuilds on its own run loop and has no on_demand mode yet.
+pub fn refresh_on_demand() bool {
+	return false
 }
 
 pub fn text(id string) string {
@@ -435,7 +441,11 @@ fn set_layer_shadow(layer macos.Id, box BoxStyle) {
 	macos.msg_void1(layer, 'setShadowColor:', macos.msg_id(ios.color(shadow.color), 'CGColor'))
 	// CoreAnimation's radius is the blur's standard deviation, about half the
 	// CSS-style blur the box declares.
-	macos.msg_void_f64(layer, 'setShadowRadius:', if shadow.blur > 0 { shadow.blur / 2 } else { 0.0 })
+	macos.msg_void_f64(layer, 'setShadowRadius:', if shadow.blur > 0 {
+		shadow.blur / 2
+	} else {
+		0.0
+	})
 	macos.msg_void_point(layer, 'setShadowOffset:', macos.point(shadow.x, shadow.y))
 }
 
@@ -932,7 +942,11 @@ fn update_image_view(image_view View, frame Rect, path string, rotation f64, tin
 		macos.msg_id1(macos.get_class('UIImage'), 'imageWithContentsOfFile:', macos.nsstring(path))
 	}
 	macos.msg_void1(image_view, 'setImage:', image)
-	macos.msg_void1(image_view, 'setTintColor:', if symbol { ios.color(tint) } else { View(unsafe { nil }) })
+	macos.msg_void1(image_view, 'setTintColor:', if symbol {
+		ios.color(tint)
+	} else {
+		View(unsafe { nil })
+	})
 }
 
 fn new_text_area_view(el Element) View {
@@ -1300,7 +1314,7 @@ fn render_children(parent View, children []Element, parent_key string, mut activ
 fn native_create_element(el Element) View {
 	return match el.kind {
 		.screen { View(unsafe { nil }) }
-		.view { new_native_view(el.frame, el.box, el.button_behavior) }
+		.view, .opengl { new_native_view(el.frame, el.box, el.button_behavior) }
 		.scroll { new_scroll_view(el.frame, el.box) }
 		.label {
 			new_label_view(el.frame, el.text, el.text_style.color, el.text_style.size, el.text_style.bold, align_value(el.text_style.align), el.text_style.lines, el.text_style.valign, label_needs_container(el))
@@ -1326,7 +1340,7 @@ fn native_create_element(el Element) View {
 fn native_update_element(native View, el Element, declared_text_changed bool) {
 	match el.kind {
 		.screen {}
-		.view {
+		.view, .opengl {
 			macos.msg_void_rect(native, 'setFrame:', native_rect(el.frame))
 			set_box_background(native, el.box)
 			set_box_corners(native, el.box)
@@ -1339,7 +1353,9 @@ fn native_update_element(native View, el Element, declared_text_changed bool) {
 		.label {
 			update_label_view(native, el.frame, el.text, el.text_style.color, el.text_style.size, el.text_style.bold, align_value(el.text_style.align), el.text_style.lines, el.text_style.valign, label_needs_container(el))
 		}
-		.image { update_image_view(native, el.frame, el.image_path, el.rotation, el.text_style.color) }
+		.image {
+			update_image_view(native, el.frame, el.image_path, el.rotation, el.text_style.color)
+		}
 		.button {
 			update_button_view(native, el.frame, el.text, el.box, el.text_style.color, el.text_style.size, el.text_style.bold, el.text_style.lines)
 		}
@@ -1555,7 +1571,11 @@ fn render_element(parent View, el Element, key string, mut active map[string]boo
 			} else {
 				el.frame.width
 			}
-			height := if el.scroll_mode != .horizontal_only { content_h + 16 } else { el.frame.height }
+			height := if el.scroll_mode != .horizontal_only {
+				content_h + 16
+			} else {
+				el.frame.height
+			}
 			macos.msg_void_rect(native, 'setContentSize:', macos.rect(width, height, 0, 0))
 			macos.msg_void_bool(native, 'setAlwaysBounceVertical:', el.scroll_mode != .horizontal_only)
 			// Where the view should be: where it is, or where it was before it was

@@ -11,9 +11,9 @@ pub struct GridLayoutDemo {}
 fn main() {
 	ui2.run_vml[GridLayoutDemo](
 		source: grid_vml_source
-		model: GridLayoutDemo{}
-		title: 'Grid Layout'
-		width: grid_width
+		model:  GridLayoutDemo{}
+		title:  'Grid Layout'
+		width:  grid_width
 		height: grid_height
 	) or { panic(err) }
 }

@@ -9,6 +9,7 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 	import gg
 	import math
 	import os
+	import sokol.gfx
 	import sokol.sapp
 	import sokol.sgl
 	import time
@@ -68,6 +69,16 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 		// Which scroller a scrollbar drag holds: the one along the bottom when set.
 		scrollbar_horizontal bool
 		scrollbar_grab_x     f64
+	}
+
+	// GlSurfaceTexture wraps a GL texture the application renders into, as a sokol
+	// image, so an `opengl` element is an ordinary textured quad in the UI's pass.
+	struct GlSurfaceTexture {
+		gl_texture u32
+		width      int
+		height     int
+		image      gfx.Image
+		sampler    gfx.Sampler
 	}
 
 	struct GgApp {
@@ -157,6 +168,12 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 	__global g_wheel_handler = WheelFn(unsafe { nil })
 	__global g_key_consumed = false
 	__global g_gg_app = &GgApp{}
+	__global g_refresh_mode = RefreshMode.continuous
+	__global g_last_frame_ticks = i64(0)
+	// g_frame_running is true while on_frame builds and draws the window.
+	// menu_default reads it so a menu bar set during the frame does not ask
+	// for another one.
+	__global g_frame_running = false
 	__global g_text_values = map[string]string{}
 	__global g_text_props = map[string]string{}
 	__global g_text_editors = map[string]TextEditor{}
@@ -218,6 +235,8 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 	__global g_font_symbol_bases = map[int]bool{}
 	__global g_font_symbol_fons = voidptr(unsafe { nil })
 	__global g_active_images = map[string]bool{}
+	__global g_opengl_surface_frames = map[string]Rect{}
+	__global g_gl_surface_textures = map[string]GlSurfaceTexture{}
 	__global g_open_dropdown = ''
 	__global g_dropdown_popup = DropdownPopup{}
 	__global g_dropdown_hover = -1
@@ -322,10 +341,62 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 	}
 
 	fn run_window_with_min_size(title string, width int, height int, min_width int, min_height int, build_fn BuildFn, event_fn EventFn) {
+		run_window_with_options(WindowOptions{
+			title:      title
+			width:      width
+			height:     height
+			min_width:  min_width
+			min_height: min_height
+		}, build_fn, event_fn)
+	}
+
+// RefreshMode selects how a window decides to redraw.
+//
+// continuous rebuilds and repaints on every vsync, which is what the
+// immediate backend has always done: anything can change between frames, so
+// nothing has to remember to ask for a repaint.
+//
+// on_demand rebuilds only when something asks: window and input events, `after`
+// timers, running animations, and application calls to request_refresh from
+// its own threads. Between those the frame callback draws nothing, Sokol still
+// throttles itself to the display, and the window idles at a fraction of the
+// continuous cost. An application whose frames come from outside the window —
+// a video surface fed by a player, for example — calls request_refresh from
+// the player thread whenever new content is ready.
+	pub enum RefreshMode {
+	continuous
+	on_demand
+	}
+
+// WindowOptions carries the window creation knobs run_window_with_options
+// accepts on top of what run_window takes positionally.
+	pub struct WindowOptions {
+	pub:
+		title      string
+		width      int
+		height     int
+		min_width  int
+		min_height int
+	// sample_count is Sokol's antialiasing level for the window's framebuffer.
+	// Flat immediate-mode geometry gains nothing visible from 4x, and weak GPUs
+	// pay the fill rate for it; 1 turns antialiasing off.
+		sample_count int = 4
+		refresh    RefreshMode = .continuous
+	}
+
+// run_window_with_options opens the window with per-application control over
+// the antialiasing level and the refresh mode. run_window and run keep their
+// long-standing behaviour: continuous at 4x samples.
+	pub fn run_window_with_options(opts WindowOptions, build_fn BuildFn, event_fn EventFn) {
+		g_refresh_mode = opts.refresh
 		g_build_screen = build_fn
 		g_event_handler = event_fn
-		configure_animation_driver(request_refresh, false)
-		publish_menu_context(event_fn, title, unsafe { nil })
+		// In on_demand mode the loop sleeps between asks, so a running
+		// animation drives it from a thread: each tick asks for a frame until
+		// every animation has crossed its deadline. The continuous loop draws
+		// anyway and needs no driver thread.
+		configure_animation_driver(request_refresh, opts.refresh == .on_demand)
+		publish_menu_context(event_fn, opts.title, unsafe { nil })
 		// Choosing the font here rather than letting gg ask `fc-match` for one
 		// keeps the window legible and identical across distributions, and
 		// gives draw_text the metrics it needs to size text in points.
@@ -337,13 +408,14 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 			bg_color: hex_color(0xf4f6f8)
 			font_path: font_regular
 			custom_bold_font_path: font_bold
-			width: width
-			height: height
-			min_width: min_width
-			min_height: min_height
-			sample_count: 4
+			width: opts.width
+			height: opts.height
+			min_width: opts.min_width
+			min_height: opts.min_height
+			sample_count: opts.sample_count
+			ui_mode: opts.refresh == .on_demand
 			create_window: true
-			window_title: title
+			window_title: opts.title
 			user_data: unsafe { voidptr(g_gg_app) }
 			init_fn: on_init
 			frame_fn: on_frame
@@ -352,18 +424,75 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 			max_dropped_files: 32
 			max_dropped_file_path_length: 4096
 		)
+		if opts.refresh == .on_demand {
+			spawn idle_keepalive_waker()
+		}
 		g_gg_app.ctx.run()
 	}
 
-	pub fn refresh() {
+// idle_keepalive_waker redraws an idle on_demand window at a slow fixed
+// rate. Every normal trigger — events, timers, animations, the application's
+// threads — asks for a redraw itself; this thread is for the ones that cannot
+// ask. On X11, sokol selects no Expose handling, so when a region of the window
+// becomes visible again nothing tells the loop, and with no compositor the
+// old pixels stay on screen. A redraw every second bounds how long any
+// surprise persists while costing about two frames out of each.
+	const idle_keepalive_ms = 1000
+
+	fn idle_keepalive_waker() {
+		for {
+			time.sleep(idle_keepalive_ms * time.millisecond)
+			// Frames flowing for another reason keep g_last_frame_ticks fresh;
+			// stepping over those intervals keeps the keep-alive from adding
+			// work on top of live traffic.
+			if time.ticks() - g_last_frame_ticks < idle_keepalive_ms {
+				continue
+			}
+			request_refresh()
+		}
 	}
 
-	// The immediate backend already rebuilds every frame, so both refresh entry
-	// points are intentionally scheduling no-ops.
+// wake_ui_loop hands gg's context a redraw ask. refresh_ui flips a boolean the
+// frame thread reads, so calling it off the UI thread is deliberate and safe;
+// libmpv's update callback and the timer threads land here.
+	fn wake_ui_loop() {
+		if g_gg_app.ctx == unsafe { nil } {
+			return
+		}
+		g_gg_app.ctx.refresh_ui()
+	}
+
+// refresh asks for a rebuild over whatever the application changed outside a
+// frame. Set the window's refresh mode to on_demand to get the effect; the
+// continuous loop was already drawing regardless.
+	pub fn refresh() {
+		if g_refresh_mode == .on_demand {
+			wake_ui_loop()
+		}
+	}
+
+// request_refresh asks for one more rebuild over whatever state the
+// application changed off the UI thread — new video frames, worker-thread
+// results. Set the window's refresh mode to on_demand to get the effect;
+// the continuous loop was already drawing regardless.
 	pub fn request_refresh() {
+		if g_refresh_mode == .on_demand {
+			wake_ui_loop()
+		}
+	}
+
+// refresh_on_demand reports whether the window redraws only when asked. It
+// lets an application skip scheduling wake timers whose only job is a redraw
+// ask: in continuous mode the loop reaches every state change within a frame
+// anyway.
+	pub fn refresh_on_demand() bool {
+		return g_refresh_mode == .on_demand
 	}
 
 	pub fn refresh_element(_id string, _element Element) {
+		if g_refresh_mode == .on_demand {
+			wake_ui_loop()
+		}
 	}
 
 	pub fn on_key(handler KeyFn) {
@@ -703,6 +832,11 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 		if app.ctx == unsafe { nil } {
 			return
 		}
+		g_last_frame_ticks = time.ticks()
+		g_frame_running = true
+		defer {
+			g_frame_running = false
+		}
 		mut ctx := app.ctx
 		// Some window managers can choose a client size different from the one
 		// requested in gg.Config before gg's cached resize event catches up. UI2
@@ -753,6 +887,13 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 			preload_images(root)
 			has_root = true
 		}
+		if voidptr(g_gl_surface_renderer) != unsafe { nil } {
+			for id, frame in g_opengl_surface_frames {
+				g_gl_surface_renderer(id, frame, f64(ctx.scale), f64(ctx.height))
+			}
+		}
+		sync_gl_surface_textures()
+		g_opengl_surface_frames = map[string]Rect{}
 		ctx.begin()
 		if has_root {
 			g_dropdown_popup.mounted = false
@@ -802,6 +943,9 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 				// Recorded before any handler below can claim the move, so the
 				// tooltip always knows where the pointer is.
 				g_tooltip.pointer_moved(f64(e.mouse_x), f64(e.mouse_y), time.ticks())
+				if voidptr(g_pointer_move_handler) != unsafe { nil } {
+					g_pointer_move_handler(f64(e.mouse_x), f64(e.mouse_y))
+				}
 				g_hover_pointer = HoverPointer{
 					x: f64(e.mouse_x)
 					y: f64(e.mouse_y)
@@ -928,6 +1072,14 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 			return
 		}
 		target := hit_test(x, y)
+		if g_refresh_mode == .on_demand && target.long_press {
+			// check_long_press fires from inside drawn frames, and after the
+			// last input event only a few trailing frames follow; the ask keeps
+			// a frame alive past the deadline so the hold is not forgotten.
+			// Only long-press targets need it, so taps on everything else let
+			// the window go back to sleep.
+			after(0.55, fn () {})
+		}
 		if target.slider {
 			commit_slider(target, x, y)
 			return
@@ -1365,6 +1517,7 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 			ctrl: e.modifiers & u32(gg.Modifier.ctrl) != 0
 			alt: e.modifiers & u32(gg.Modifier.alt) != 0
 			cmd: e.modifiers & u32(gg.Modifier.super) != 0
+			repeat: e.key_repeat
 		}
 	}
 
@@ -2356,6 +2509,31 @@ fn page_focused_text_area(direction int) {
 					el.text_style, clip)
 				add_full_text_tooltip(el, area, clip, el.text, shortened)
 			}
+			.opengl {
+				x := el.frame.x + off_x
+				y := el.frame.y + off_y
+				// Before the application's first texture arrives — the frame after
+				// the element appears — the surface draws nothing, the way native
+				// backends show it.
+				if tex := g_gl_surface_textures[el.id] {
+					draw_gl_surface_quad(tex, x, y, el.frame.width, el.frame.height)
+				}
+				if el.id.len > 0 {
+					register_gl_surface(el.id, x, y, el.frame.width, el.frame.height)
+				}
+				if el.enabled && element_action_id(el).len > 0 && (el.clickable || el.draggable) {
+					add_hit_target(HitTarget{
+						id: el.id
+						action_id: element_action_id(el)
+						x: x
+						y: y
+						w: el.frame.width
+						h: el.frame.height
+						clickable: el.clickable
+						draggable: el.draggable
+					}, clip)
+				}
+			}
 			.image {
 				x := el.frame.x + off_x
 				y := el.frame.y + off_y
@@ -2712,7 +2890,9 @@ fn page_focused_text_area(direction int) {
 				} else {
 					4.0
 				}
-				thumb_size := if el.slider_style.thumb_size > 0 {
+				thumb_size := if el.slider_style.thumb_size < 0 {
+					0.0
+				} else if el.slider_style.thumb_size > 0 {
 					el.slider_style.thumb_size
 				} else {
 					20.0
@@ -2742,9 +2922,11 @@ fn page_focused_text_area(direction int) {
 						draw_rect(ctx, track_x, thumb_y, track_width, track_y + extent - thumb_y,
 							value_color, track_width / 2)
 					}
-					draw_rect(ctx, frame.x + (frame.width - thumb_size) / 2,
-						thumb_y - thumb_size / 2, thumb_size, thumb_size, thumb_color,
-						thumb_size / 2)
+					if thumb_size > 0 {
+						draw_rect(ctx, frame.x + (frame.width - thumb_size) / 2,
+							thumb_y - thumb_size / 2, thumb_size, thumb_size, thumb_color,
+							thumb_size / 2)
+					}
 				} else {
 					inset := slider_track_padding(el.padding, frame.width)
 					extent := frame.width - inset * 2
@@ -2757,9 +2939,11 @@ fn page_focused_text_area(direction int) {
 						draw_rect(ctx, track_x, track_y, thumb_x - track_x, track_width,
 							value_color, track_width / 2)
 					}
-					draw_rect(ctx, thumb_x - thumb_size / 2,
-						frame.y + (frame.height - thumb_size) / 2, thumb_size, thumb_size,
-						thumb_color, thumb_size / 2)
+					if thumb_size > 0 {
+						draw_rect(ctx, thumb_x - thumb_size / 2,
+							frame.y + (frame.height - thumb_size) / 2, thumb_size, thumb_size,
+							thumb_color, thumb_size / 2)
+					}
 				}
 				if el.enabled {
 					add_hit_target(HitTarget{
@@ -2848,6 +3032,77 @@ fn page_focused_text_area(direction int) {
 			w: visible.width
 			h: visible.height
 		}
+	}
+
+	fn register_gl_surface(id string, x f64, y f64, w f64, h f64) {
+		g_opengl_surface_frames[id] = Rect{x: x, y: y, width: w, height: h}
+	}
+
+	// make_gl_surface_texture wraps a GL texture as a sokol image with its sampler.
+	// The GL texture stays owned by the application.
+	fn make_gl_surface_texture(request GlTextureRequest) GlSurfaceTexture {
+		mut desc := gfx.ImageDesc{
+			width:        request.width
+			height:       request.height
+			pixel_format: .rgba8
+		}
+		desc.gl_textures[0] = request.gl_texture
+		return GlSurfaceTexture{
+			gl_texture: request.gl_texture
+			width:      request.width
+			height:     request.height
+			image:      gfx.make_image(&desc)
+			sampler:    gfx.make_sampler(&gfx.SamplerDesc{
+				min_filter: .linear
+				mag_filter: .linear
+			})
+		}
+	}
+
+	fn release_gl_surface_texture(tex GlSurfaceTexture) {
+		gfx.destroy_image(tex.image)
+		gfx.destroy_sampler(tex.sampler)
+	}
+
+	// sync_gl_surface_textures runs before each frame, outside its render pass. It drops
+	// the requests and textures of elements that were not drawn last frame, and wraps
+	// new or changed requests as sokol images.
+	fn sync_gl_surface_textures() {
+		for id in g_gl_surface_requests.keys() {
+			if id !in g_opengl_surface_frames {
+				g_gl_surface_requests.delete(id)
+			}
+		}
+		for id in g_gl_surface_textures.keys() {
+			if id !in g_gl_surface_requests {
+				release_gl_surface_texture(g_gl_surface_textures[id] or { continue })
+				g_gl_surface_textures.delete(id)
+			}
+		}
+		for id, request in g_gl_surface_requests {
+			if current := g_gl_surface_textures[id] {
+				if current.gl_texture == request.gl_texture && current.width == request.width
+					&& current.height == request.height {
+					continue
+				}
+				release_gl_surface_texture(current)
+			}
+			g_gl_surface_textures[id] = make_gl_surface_texture(request)
+		}
+	}
+
+	// draw_gl_surface_quad draws the texture over the element's frame. Texture rows run
+	// bottom-up, so the top edge of the frame takes the texture's top row at v = 1.
+	fn draw_gl_surface_quad(tex GlSurfaceTexture, x f64, y f64, w f64, h f64) {
+		sgl.enable_texture()
+		sgl.texture(tex.image, tex.sampler)
+		sgl.begin_quads()
+		sgl.v2f_t2f_c4f(f32(x), f32(y), 0, 1, 1, 1, 1, 1)
+		sgl.v2f_t2f_c4f(f32(x + w), f32(y), 1, 1, 1, 1, 1, 1)
+		sgl.v2f_t2f_c4f(f32(x + w), f32(y + h), 1, 0, 1, 1, 1, 1)
+		sgl.v2f_t2f_c4f(f32(x), f32(y + h), 0, 0, 1, 1, 1, 1)
+		sgl.end()
+		sgl.disable_texture()
 	}
 
 	fn draw_cached_image(ctx &gg.Context, path string, x f64, y f64, width f64, height f64, rotation f64) bool {

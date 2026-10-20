@@ -35,21 +35,21 @@ pub fn popup_geometry(config PopupConfig) !PopupGeometry {
 		return error('popup title and separator heights cannot be negative')
 	}
 	modal_geometry := modal_view_geometry(
-		frame: config.frame
-		content_width: config.content_width
+		frame:          config.frame
+		content_width:  config.content_width
 		content_height: config.content_height
-		size_hint_x: config.size_hint_x
-		size_hint_y: config.size_hint_y
+		size_hint_x:    config.size_hint_x
+		size_hint_y:    config.size_hint_y
 	)!
 	if config.title_height + config.separator_height > modal_geometry.content.height {
 		return error('popup title and separator exceed its content height')
 	}
 	return PopupGeometry{
-		overlay: modal_geometry.overlay
-		surface: modal_geometry.content
-		title: rect(0, 0, modal_geometry.content.width, config.title_height)
+		overlay:   modal_geometry.overlay
+		surface:   modal_geometry.content
+		title:     rect(0, 0, modal_geometry.content.width, config.title_height)
 		separator: rect(0, config.title_height, modal_geometry.content.width, config.separator_height)
-		body: rect(0, config.title_height + config.separator_height, modal_geometry.content.width, modal_geometry.content.height - config.title_height - config.separator_height)
+		body:      rect(0, config.title_height + config.separator_height, modal_geometry.content.width, modal_geometry.content.height - config.title_height - config.separator_height)
 	}
 }
 
@@ -77,15 +77,15 @@ pub fn popup(config PopupConfig) !Element {
 		content,
 	])
 	return modal_view(
-		id: config.id
-		frame: config.frame
-		open: config.open
-		auto_dismiss: config.auto_dismiss
+		id:                config.id
+		frame:             config.frame
+		open:              config.open
+		auto_dismiss:      config.auto_dismiss
 		dismiss_action_id: config.dismiss_action_id
-		content_width: geometry.surface.width
-		content_height: geometry.surface.height
-		overlay_box: config.overlay_box
-		content_box: config.surface_box
-		content: surface_content
+		content_width:     geometry.surface.width
+		content_height:    geometry.surface.height
+		overlay_box:       config.overlay_box
+		content_box:       config.surface_box
+		content:           surface_content
 	)!
 }
