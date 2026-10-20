@@ -8,8 +8,8 @@ module ui2
 import os
 
 struct LinuxClipboardTool {
-	copy  string // shell command reading the text from the file named by %s
-	paste string
+	copy  []string // arguments of the tool reading the text from its stdin
+	paste []string
 }
 
 fn linux_has_executable(name string) bool {
@@ -20,8 +20,8 @@ fn linux_clipboard_tool() ?LinuxClipboardTool {
 	if os.getenv('WAYLAND_DISPLAY').len > 0 && linux_has_executable('wl-copy')
 		&& linux_has_executable('wl-paste') {
 		return LinuxClipboardTool{
-			copy:  'wl-copy < %s'
-			paste: 'wl-paste --no-newline --type text'
+			copy:  ['wl-copy']
+			paste: ['wl-paste', '--no-newline', '--type', 'text']
 		}
 	}
 	if os.getenv('DISPLAY').len == 0 {
@@ -29,14 +29,14 @@ fn linux_clipboard_tool() ?LinuxClipboardTool {
 	}
 	if linux_has_executable('xclip') {
 		return LinuxClipboardTool{
-			copy:  'xclip -selection clipboard -in < %s'
-			paste: 'xclip -selection clipboard -out'
+			copy:  ['xclip', '-selection', 'clipboard', '-in']
+			paste: ['xclip', '-selection', 'clipboard', '-out']
 		}
 	}
 	if linux_has_executable('xsel') {
 		return LinuxClipboardTool{
-			copy:  'xsel --clipboard --input < %s'
-			paste: 'xsel --clipboard --output'
+			copy:  ['xsel', '--clipboard', '--input']
+			paste: ['xsel', '--clipboard', '--output']
 		}
 	}
 	return none
@@ -54,16 +54,24 @@ fn native_set_clipboard_text(text string) bool {
 	defer {
 		os.rm(path) or {}
 	}
-	// The tool reads the file before it forks to keep serving the selection; its
-	// output goes to /dev/null so the background copy does not hold the pipe
-	// this call waits on.
-	command := tool.copy.replace('%s', os.quoted_path(path)) + ' >/dev/null 2>&1'
-	return os.execute(command).exit_code == 0
+	// The tool reads the file before it forks to keep serving the selection;
+	// its streams are captured and dropped, so the background copy does not
+	// hold the pipes this call waits on.
+	mut p := os.new_process(tool.copy[0])
+	p.set_args(tool.copy[1..])
+	p.set_redirect_stdio()
+	p.set_stdin_path(path)
+	p.run()
+	_ = p.stdout_slurp()
+	_ = p.stderr_slurp()
+	p.wait()
+	p.close()
+	return p.code == 0
 }
 
 fn native_clipboard_text() ?string {
 	tool := linux_clipboard_tool() or { return none }
-	result := os.execute(tool.paste + ' 2>/dev/null')
+	result := os.exec(tool.paste)
 	if result.exit_code != 0 {
 		return none
 	}
