@@ -157,6 +157,10 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 	__global g_gg_app = &GgApp{}
 	__global g_refresh_mode = RefreshMode.continuous
 	__global g_last_frame_ticks = i64(0)
+	// g_frame_running is true while on_frame builds and draws the window.
+	// menu_default reads it so a menu bar set during the frame does not ask
+	// for another one.
+	__global g_frame_running = false
 	__global g_text_values = map[string]string{}
 	__global g_text_props = map[string]string{}
 	__global g_text_editors = map[string]TextEditor{}
@@ -799,6 +803,10 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 			return
 		}
 		g_last_frame_ticks = time.ticks()
+		g_frame_running = true
+		defer {
+			g_frame_running = false
+		}
 		mut ctx := app.ctx
 		// Some window managers can choose a client size different from the one
 		// requested in gg.Config before gg's cached resize event catches up. UI2
