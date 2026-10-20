@@ -1094,6 +1094,18 @@ Run `v run examples/charts/main.v` to see all five chart types in a layout that
 adapts to the window width. Add `-d ui2_custom_rendering` to try the custom
 renderer on macOS or Windows.
 
+## Window input
+
+`on_pointer_move` reports every pointer move over the window, wherever it lands, in
+logical units. The custom renderer delivers it; native backends do not yet.
+
+`set_menu_bar_hidden(true)` hides the menu bar in the custom renderer: it takes no
+room, draws nothing and takes no clicks. Native menu bars are not hidden. Read the
+state with `menu_bar_hidden()`.
+
+`KeyEvent.repeat` is true for an autorepeat of a key that is still held, so an
+application can act on the first press only. The custom renderer delivers it;
+native backends do not yet.
 ## OpenGL surfaces
 
 `opengl(id, frame)` reserves a rectangle for content an application renders with

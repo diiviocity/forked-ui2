@@ -2888,7 +2888,9 @@ fn page_focused_text_area(direction int) {
 				} else {
 					4.0
 				}
-				thumb_size := if el.slider_style.thumb_size > 0 {
+				thumb_size := if el.slider_style.thumb_size < 0 {
+					0.0
+				} else if el.slider_style.thumb_size > 0 {
 					el.slider_style.thumb_size
 				} else {
 					20.0
@@ -2918,9 +2920,11 @@ fn page_focused_text_area(direction int) {
 						draw_rect(ctx, track_x, thumb_y, track_width, track_y + extent - thumb_y,
 							value_color, track_width / 2)
 					}
-					draw_rect(ctx, frame.x + (frame.width - thumb_size) / 2,
-						thumb_y - thumb_size / 2, thumb_size, thumb_size, thumb_color,
-						thumb_size / 2)
+					if thumb_size > 0 {
+						draw_rect(ctx, frame.x + (frame.width - thumb_size) / 2,
+							thumb_y - thumb_size / 2, thumb_size, thumb_size, thumb_color,
+							thumb_size / 2)
+					}
 				} else {
 					inset := slider_track_padding(el.padding, frame.width)
 					extent := frame.width - inset * 2
@@ -2933,9 +2937,11 @@ fn page_focused_text_area(direction int) {
 						draw_rect(ctx, track_x, track_y, thumb_x - track_x, track_width,
 							value_color, track_width / 2)
 					}
-					draw_rect(ctx, thumb_x - thumb_size / 2,
-						frame.y + (frame.height - thumb_size) / 2, thumb_size, thumb_size,
-						thumb_color, thumb_size / 2)
+					if thumb_size > 0 {
+						draw_rect(ctx, thumb_x - thumb_size / 2,
+							frame.y + (frame.height - thumb_size) / 2, thumb_size, thumb_size,
+							thumb_color, thumb_size / 2)
+					}
 				}
 				if el.enabled {
 					add_hit_target(HitTarget{
