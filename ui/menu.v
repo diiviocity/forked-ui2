@@ -83,6 +83,9 @@ mut:
 	// is how the per-platform menu code reaches the window's event handler, the
 	// name to build a macOS application menu from, and the native handle a
 	// Win32 menu bar attaches to — without depending on one backend's state.
+	// The window doubles as the embedder-facing main window handle reported by
+	// native_window_handle; menu_update_window publishes it late on backends
+	// whose window only exists after the event loop starts (AppKit).
 	dispatch EventFn = EventFn(unsafe { nil })
 	app_name string  = 'App'
 	window   voidptr
@@ -120,6 +123,24 @@ fn menu_app_name() string {
 
 fn menu_window() voidptr {
 	return menu_state().window
+}
+
+// menu_update_window replaces the native handle published by
+// publish_menu_context. Backends whose window only exists after the event
+// loop starts (AppKit) call it once the real window is created.
+fn menu_update_window(window voidptr) {
+	mut st := menu_state()
+	st.window = window
+}
+
+// native_window_handle reports the main window's native handle for embedders
+// (e.g. hosting a webview as a child of this window).
+//
+//   - Windows: the real HWND.
+//   - macOS: the NSWindow once the app has finished launching (nil before).
+//   - custom renderer / Linux: nil (embedding is not supported).
+pub fn native_window_handle() voidptr {
+	return menu_window()
 }
 
 // install_declared_menus applies what was declared before the window existed.
