@@ -191,6 +191,9 @@ pub fn set_menu_bar(menus []Menu) {
 	mut st := menu_state()
 	st.menus = menus.clone()
 	native_set_menu_bar(st.menus)
+	// Callers may do this from a thread or before a frame would have drawn
+	// otherwise; in on_demand refresh mode the ask is what shows the bar.
+	request_refresh()
 }
 
 // menu_bar reports the menu bar last passed to set_menu_bar.
