@@ -201,6 +201,13 @@ pub type DropFn = fn (DropEvent)
 // PointerMoveFn receives the pointer position, in logical units, on every move.
 pub type PointerMoveFn = fn (x f64, y f64)
 
+// MouseButtonFn reports raw mouse button transitions in window points:
+// button 0 left, 1 right, 2 middle; down true on press, false on release.
+pub type MouseButtonFn = fn (button int, down bool, x f64, y f64)
+
+// WheelFn reports raw wheel deltas before any scroll element sees them.
+pub type WheelFn = fn (dx f64, dy f64)
+
 pub struct DropEvent {
 pub:
 	paths []string

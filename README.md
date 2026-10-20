@@ -1099,6 +1099,12 @@ renderer on macOS or Windows.
 `on_pointer_move` reports every pointer move over the window, wherever it lands, in
 logical units. The custom renderer delivers it; native backends do not yet.
 
+`on_mouse_button` reports raw mouse button transitions in window points: button 0
+is left, 1 right, 2 middle, and `down` says press or release. `on_wheel` reports
+raw wheel deltas before any scroll element or the menu bar sees them, so
+shift+wheel arrives as a vertical delta exactly as the hardware sent it. The
+custom renderer delivers both; native backends do not yet.
+
 `set_menu_bar_hidden(true)` hides the menu bar in the custom renderer: it takes no
 room, draws nothing and takes no clicks. Native menu bars are not hidden. Read the
 state with `menu_bar_hidden()`.
