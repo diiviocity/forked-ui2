@@ -2510,12 +2510,11 @@ fn page_focused_text_area(direction int) {
 			.opengl {
 				x := el.frame.x + off_x
 				y := el.frame.y + off_y
+				// Before the application's first texture arrives — the frame after
+				// the element appears — the surface draws nothing, the way native
+				// backends show it.
 				if tex := g_gl_surface_textures[el.id] {
 					draw_gl_surface_quad(tex, x, y, el.frame.width, el.frame.height)
-				} else {
-					// Until the application supplies a texture, show a blue disc.
-					r := math.min(el.frame.width, el.frame.height) / 2.0
-					draw_rect(ctx, x, y, el.frame.width, el.frame.height, 0x3498db, r)
 				}
 				if el.id.len > 0 {
 					register_gl_surface(el.id, x, y, el.frame.width, el.frame.height)
@@ -3097,8 +3096,6 @@ fn page_focused_text_area(direction int) {
 		sgl.end()
 		sgl.disable_texture()
 	}
-
-
 
 	fn draw_cached_image(ctx &gg.Context, path string, x f64, y f64, width f64, height f64, rotation f64) bool {
 		if !cache_image(path) { return false }
