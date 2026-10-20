@@ -1232,7 +1232,7 @@ fn render_element(parent NativeView, el Element, key string, mut active map[stri
 			native = parent
 			render_children(parent, el.children, key, mut active)
 		}
-		.view {
+		.view, .opengl {
 			register_pointer(native, el)
 			render_children(native, el.children, key, mut active)
 		}
@@ -1423,7 +1423,7 @@ fn native_create_element(el Element) NativeView {
 		.screen {
 			native_nil_view()
 		}
-		.view {
+		.view, .opengl {
 			native_new_view(element_rect(el.frame), el.box, element_interactive(el))
 		}
 		.scroll {
@@ -1466,7 +1466,7 @@ fn native_create_element(el Element) NativeView {
 fn native_update_element(native NativeView, el Element, declared_text_changed bool, content_changed bool) {
 	match el.kind {
 		.screen {}
-		.view {
+		.view, .opengl {
 			native_set_frame(native, element_rect(el.frame))
 			native_set_box_background(native, el.box)
 			native_set_box_corners(native, el.box)

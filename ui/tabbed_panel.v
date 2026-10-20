@@ -24,9 +24,9 @@ pub:
 	enabled   bool = true
 	// Drawn by the themed look (see TabbedPanelConfig.variant): a symbol
 	// before the title, a badge after it, and a close button.
-	icon      string
-	badge     string
-	closable  bool
+	icon     string
+	badge    string
+	closable bool
 }
 
 pub struct TabbedPanelConfig {
@@ -209,9 +209,9 @@ pub fn tabbed_panel(config TabbedPanelConfig) !Element {
 			} else {
 				config.header_box
 			}, if active { config.active_header_text_style } else { config.header_text_style })
-			action_id: tab.action_id
-			enabled: tab.enabled
-			accessibility_role: 'tab'
+			action_id:           tab.action_id
+			enabled:             tab.enabled
+			accessibility_role:  'tab'
 			accessibility_value: if active { 'selected' } else { 'not selected' }
 		}
 	}

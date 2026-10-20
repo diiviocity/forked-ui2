@@ -1106,6 +1106,37 @@ state with `menu_bar_hidden()`.
 `KeyEvent.repeat` is true for an autorepeat of a key that is still held, so an
 application can act on the first press only. The custom renderer delivers it;
 native backends do not yet.
+## OpenGL surfaces
+
+`opengl(id, frame)` reserves a rectangle for content an application renders with
+OpenGL, such as a video frame. The gg renderer draws it where the graphics backend
+is OpenGL — Linux and Android. Custom-rendered desktop builds render through Metal
+(macOS) or D3D11 (Windows), which have no GL texture to wrap, so a texture handed
+over there draws as an empty quad; native backends show it as a transparent view.
+
+`set_gl_surface_renderer` installs a function that runs before every frame, on the
+UI thread with the GL context current, once for each `opengl` element drawn in the
+previous frame. Render into a framebuffer there, then hand ui2 the texture with
+`set_gl_surface_texture(id, texture, width, height)`, sizes in pixels. ui2 draws the
+texture as a quad over the element's frame, in the normal UI pass, so menus and other
+overlays draw above it. A texture whose element is no longer drawn is released before
+the next frame. The renderer runs inside the frame sokol is already driving: GL state
+it changes behind sokol's back — a framebuffer or texture it binds — has to be handed
+back with `gfx.reset_state_cache()` before returning, or sokol may skip reapplying
+bindings and draw the UI with stale ones.
+
+```v
+ui2.set_gl_surface_renderer(fn (id string, frame ui2.Rect, scale f64, height f64) {
+	if id == 'video' {
+		// ... render into the framebuffer that owns `texture`, sized w x h pixels ...
+		ui2.set_gl_surface_texture(id, texture, w, h)
+		gfx.reset_state_cache()
+	}
+})
+```
+
+A new element first gets its texture one frame after it appears.
+`examples/opengl_demo` renders a colour that cycles over time into the element.
 
 ## Keyboard events
 

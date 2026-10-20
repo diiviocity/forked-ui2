@@ -9,6 +9,7 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 	import gg
 	import math
 	import os
+	import sokol.gfx
 	import sokol.sapp
 	import sokol.sgl
 	import time
@@ -68,6 +69,16 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 		// Which scroller a scrollbar drag holds: the one along the bottom when set.
 		scrollbar_horizontal bool
 		scrollbar_grab_x     f64
+	}
+
+	// GlSurfaceTexture wraps a GL texture the application renders into, as a sokol
+	// image, so an `opengl` element is an ordinary textured quad in the UI's pass.
+	struct GlSurfaceTexture {
+		gl_texture u32
+		width      int
+		height     int
+		image      gfx.Image
+		sampler    gfx.Sampler
 	}
 
 	struct GgApp {
@@ -216,6 +227,8 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 	__global g_font_symbol_bases = map[int]bool{}
 	__global g_font_symbol_fons = voidptr(unsafe { nil })
 	__global g_active_images = map[string]bool{}
+	__global g_opengl_surface_frames = map[string]Rect{}
+	__global g_gl_surface_textures = map[string]GlSurfaceTexture{}
 	__global g_open_dropdown = ''
 	__global g_dropdown_popup = DropdownPopup{}
 	__global g_dropdown_hover = -1
@@ -736,6 +749,13 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 			preload_images(root)
 			has_root = true
 		}
+		if voidptr(g_gl_surface_renderer) != unsafe { nil } {
+			for id, frame in g_opengl_surface_frames {
+				g_gl_surface_renderer(id, frame, f64(ctx.scale), f64(ctx.height))
+			}
+		}
+		sync_gl_surface_textures()
+		g_opengl_surface_frames = map[string]Rect{}
 		ctx.begin()
 		if has_root {
 			g_dropdown_popup.mounted = false
@@ -2334,6 +2354,31 @@ fn page_focused_text_area(direction int) {
 					el.text_style, clip)
 				add_full_text_tooltip(el, area, clip, el.text, shortened)
 			}
+			.opengl {
+				x := el.frame.x + off_x
+				y := el.frame.y + off_y
+				// Before the application's first texture arrives — the frame after
+				// the element appears — the surface draws nothing, the way native
+				// backends show it.
+				if tex := g_gl_surface_textures[el.id] {
+					draw_gl_surface_quad(tex, x, y, el.frame.width, el.frame.height)
+				}
+				if el.id.len > 0 {
+					register_gl_surface(el.id, x, y, el.frame.width, el.frame.height)
+				}
+				if el.enabled && element_action_id(el).len > 0 && (el.clickable || el.draggable) {
+					add_hit_target(HitTarget{
+						id: el.id
+						action_id: element_action_id(el)
+						x: x
+						y: y
+						w: el.frame.width
+						h: el.frame.height
+						clickable: el.clickable
+						draggable: el.draggable
+					}, clip)
+				}
+			}
 			.image {
 				x := el.frame.x + off_x
 				y := el.frame.y + off_y
@@ -2690,7 +2735,9 @@ fn page_focused_text_area(direction int) {
 				} else {
 					4.0
 				}
-				thumb_size := if el.slider_style.thumb_size > 0 {
+				thumb_size := if el.slider_style.thumb_size < 0 {
+					0.0
+				} else if el.slider_style.thumb_size > 0 {
 					el.slider_style.thumb_size
 				} else {
 					20.0
@@ -2720,9 +2767,11 @@ fn page_focused_text_area(direction int) {
 						draw_rect(ctx, track_x, thumb_y, track_width, track_y + extent - thumb_y,
 							value_color, track_width / 2)
 					}
-					draw_rect(ctx, frame.x + (frame.width - thumb_size) / 2,
-						thumb_y - thumb_size / 2, thumb_size, thumb_size, thumb_color,
-						thumb_size / 2)
+					if thumb_size > 0 {
+						draw_rect(ctx, frame.x + (frame.width - thumb_size) / 2,
+							thumb_y - thumb_size / 2, thumb_size, thumb_size, thumb_color,
+							thumb_size / 2)
+					}
 				} else {
 					inset := slider_track_padding(el.padding, frame.width)
 					extent := frame.width - inset * 2
@@ -2735,9 +2784,11 @@ fn page_focused_text_area(direction int) {
 						draw_rect(ctx, track_x, track_y, thumb_x - track_x, track_width,
 							value_color, track_width / 2)
 					}
-					draw_rect(ctx, thumb_x - thumb_size / 2,
-						frame.y + (frame.height - thumb_size) / 2, thumb_size, thumb_size,
-						thumb_color, thumb_size / 2)
+					if thumb_size > 0 {
+						draw_rect(ctx, thumb_x - thumb_size / 2,
+							frame.y + (frame.height - thumb_size) / 2, thumb_size, thumb_size,
+							thumb_color, thumb_size / 2)
+					}
 				}
 				if el.enabled {
 					add_hit_target(HitTarget{
@@ -2826,6 +2877,77 @@ fn page_focused_text_area(direction int) {
 			w: visible.width
 			h: visible.height
 		}
+	}
+
+	fn register_gl_surface(id string, x f64, y f64, w f64, h f64) {
+		g_opengl_surface_frames[id] = Rect{x: x, y: y, width: w, height: h}
+	}
+
+	// make_gl_surface_texture wraps a GL texture as a sokol image with its sampler.
+	// The GL texture stays owned by the application.
+	fn make_gl_surface_texture(request GlTextureRequest) GlSurfaceTexture {
+		mut desc := gfx.ImageDesc{
+			width:        request.width
+			height:       request.height
+			pixel_format: .rgba8
+		}
+		desc.gl_textures[0] = request.gl_texture
+		return GlSurfaceTexture{
+			gl_texture: request.gl_texture
+			width:      request.width
+			height:     request.height
+			image:      gfx.make_image(&desc)
+			sampler:    gfx.make_sampler(&gfx.SamplerDesc{
+				min_filter: .linear
+				mag_filter: .linear
+			})
+		}
+	}
+
+	fn release_gl_surface_texture(tex GlSurfaceTexture) {
+		gfx.destroy_image(tex.image)
+		gfx.destroy_sampler(tex.sampler)
+	}
+
+	// sync_gl_surface_textures runs before each frame, outside its render pass. It drops
+	// the requests and textures of elements that were not drawn last frame, and wraps
+	// new or changed requests as sokol images.
+	fn sync_gl_surface_textures() {
+		for id in g_gl_surface_requests.keys() {
+			if id !in g_opengl_surface_frames {
+				g_gl_surface_requests.delete(id)
+			}
+		}
+		for id in g_gl_surface_textures.keys() {
+			if id !in g_gl_surface_requests {
+				release_gl_surface_texture(g_gl_surface_textures[id] or { continue })
+				g_gl_surface_textures.delete(id)
+			}
+		}
+		for id, request in g_gl_surface_requests {
+			if current := g_gl_surface_textures[id] {
+				if current.gl_texture == request.gl_texture && current.width == request.width
+					&& current.height == request.height {
+					continue
+				}
+				release_gl_surface_texture(current)
+			}
+			g_gl_surface_textures[id] = make_gl_surface_texture(request)
+		}
+	}
+
+	// draw_gl_surface_quad draws the texture over the element's frame. Texture rows run
+	// bottom-up, so the top edge of the frame takes the texture's top row at v = 1.
+	fn draw_gl_surface_quad(tex GlSurfaceTexture, x f64, y f64, w f64, h f64) {
+		sgl.enable_texture()
+		sgl.texture(tex.image, tex.sampler)
+		sgl.begin_quads()
+		sgl.v2f_t2f_c4f(f32(x), f32(y), 0, 1, 1, 1, 1, 1)
+		sgl.v2f_t2f_c4f(f32(x + w), f32(y), 1, 1, 1, 1, 1, 1)
+		sgl.v2f_t2f_c4f(f32(x + w), f32(y + h), 1, 0, 1, 1, 1, 1)
+		sgl.v2f_t2f_c4f(f32(x), f32(y + h), 0, 0, 1, 1, 1, 1)
+		sgl.end()
+		sgl.disable_texture()
 	}
 
 	fn draw_cached_image(ctx &gg.Context, path string, x f64, y f64, width f64, height f64, rotation f64) bool {

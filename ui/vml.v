@@ -776,7 +776,11 @@ pub fn element_from_vnode(node &VNode, frame Rect) !Element {
 }
 
 fn node_to_element(node &VNode, frame Rect) !Element {
-	resolved := if node.tag == 'Screen' && node.prop_bool('adaptive') { frame } else { v_frame(node, frame) }
+	resolved := if node.tag == 'Screen' && node.prop_bool('adaptive') {
+		frame
+	} else {
+		v_frame(node, frame)
+	}
 	el := node_to_element_base(node, resolved)!
 	key := node.prop('key')
 	menu := v_menu(node)
@@ -884,13 +888,13 @@ fn node_to_element_base(node &VNode, frame Rect) !Element {
 				return Element{
 					...scroll_persistent(node.id, frame, v_color(node, 'background', 0xffffff),
 						children)
-					box: v_box(node)
+					box:         v_box(node)
 					scroll_mode: mode
 				}
 			}
 			return Element{
 				...scroll(node.id, frame, v_color(node, 'background', 0xffffff), children)
-				box: v_box(node)
+				box:         v_box(node)
 				scroll_mode: mode
 			}
 		}
@@ -1824,7 +1828,7 @@ fn v_frame(node &VNode, fallback Rect) Rect {
 	return rect(node.prop_or('x', fallback.x.str()).f64(),
 		node.prop_or('y', fallback.y.str()).f64(),
 		node.prop_or('width', fallback.width.str()).f64(), node.prop_or('height',
-		fallback.height.str()).f64())
+			fallback.height.str()).f64())
 }
 
 fn v_dimension(node &VNode, key string, fallback f64) f64 {

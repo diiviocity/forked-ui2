@@ -2,14 +2,14 @@ module ui2
 
 fn test_switch_constructor_exposes_state_style_and_accessibility() {
 	el := switch_control(
-		id: 'wifi'
+		id:        'wifi'
 		action_id: 'wifi_changed'
-		frame: rect(10, 20, 90, 40)
-		active: true
-		style: SwitchStyle{
+		frame:     rect(10, 20, 90, 40)
+		active:    true
+		style:     SwitchStyle{
 			inactive_track_color: 0x111111
-			active_track_color: 0x222222
-			thumb_color: 0x333333
+			active_track_color:   0x222222
+			thumb_color:          0x333333
 		}
 	)
 	assert el.kind == .switch_control

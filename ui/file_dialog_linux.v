@@ -35,7 +35,10 @@ fn native_file_dialog(cfg FileDialogConfig) []string {
 		eprintln('ui2: no native file dialog is available')
 		return []string{}
 	}
-	result := os.execute(command)
+	// The dialog tools chatty GTK warnings (about keys in the user's own
+	// settings.ini) are noise in the application's terminal; the selected
+	// paths arrive on stdout either way.
+	result := os.execute(command + ' 2>/dev/null')
 	if result.exit_code != 0 {
 		return []string{}
 	}
