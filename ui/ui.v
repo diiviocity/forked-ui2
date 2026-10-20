@@ -150,11 +150,12 @@ pub enum KeyCode {
 
 pub struct KeyEvent {
 pub:
-	code  KeyCode
-	shift bool
-	ctrl  bool
-	alt   bool
-	cmd   bool
+	code   KeyCode
+	shift  bool
+	ctrl   bool
+	alt    bool
+	cmd    bool
+	repeat bool // an autorepeat of a key that is still held
 }
 
 // name returns the normalized key name used by the legacy KeyFn callback.
@@ -196,6 +197,9 @@ pub type ScrollFn = fn (string)
 // DropFn receives file URLs and/or plain text dropped on the application
 // window, plus the pointer location in root-view coordinates.
 pub type DropFn = fn (DropEvent)
+
+// PointerMoveFn receives the pointer position, in logical units, on every move.
+pub type PointerMoveFn = fn (x f64, y f64)
 
 pub struct DropEvent {
 pub:

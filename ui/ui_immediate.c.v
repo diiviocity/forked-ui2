@@ -802,6 +802,9 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 				// Recorded before any handler below can claim the move, so the
 				// tooltip always knows where the pointer is.
 				g_tooltip.pointer_moved(f64(e.mouse_x), f64(e.mouse_y), time.ticks())
+				if voidptr(g_pointer_move_handler) != unsafe { nil } {
+					g_pointer_move_handler(f64(e.mouse_x), f64(e.mouse_y))
+				}
 				g_hover_pointer = HoverPointer{
 					x: f64(e.mouse_x)
 					y: f64(e.mouse_y)
@@ -1359,6 +1362,7 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 			ctrl: e.modifiers & u32(gg.Modifier.ctrl) != 0
 			alt: e.modifiers & u32(gg.Modifier.alt) != 0
 			cmd: e.modifiers & u32(gg.Modifier.super) != 0
+			repeat: e.key_repeat
 		}
 	}
 
