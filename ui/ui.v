@@ -4,9 +4,11 @@ pub type BuildFn = fn () Element
 
 pub type EventFn = fn (string)
 
-// GlSurfaceFn draws into an `opengl` element once the UI has been drawn. frame
-// is in logical units; multiply by scale for framebuffer pixels. height is the
-// window height in logical units, for flipping to OpenGL's bottom-left origin.
+// GlSurfaceFn renders into an `opengl` element's texture. It runs before every
+// frame, for the elements drawn in the previous frame; gl_surface.v carries the
+// full contract. frame is in logical units; multiply by scale for framebuffer
+// pixels. height is the window height in logical units, for flipping to OpenGL's
+// bottom-left origin.
 pub type GlSurfaceFn = fn (id string, frame Rect, scale f64, height f64)
 
 // KeyFn receives normalized key strings: 'up', 'forward_delete', 'tab',
