@@ -4,7 +4,10 @@ module ui2
 
 // gl_surface.v is the platform-neutral side of `opengl` elements. The gg renderer
 // draws them, and native backends show them as transparent views, so applications
-// can call these functions on every platform.
+// can call these functions on every platform. Wrapping a GL texture is a feature of
+// sokol's OpenGL backends — Linux and Android; custom-rendered desktop builds run
+// Metal or D3D11, which have no GL texture to wrap, so a texture handed over there
+// draws as an empty quad.
 
 // GlTextureRequest names a GL texture that the application renders into for one
 // `opengl` element. The texture stays owned by the application.
@@ -22,6 +25,11 @@ __global g_gl_surface_requests = map[string]GlTextureRequest{}
 // element. It runs before every frame, on the UI thread, with the GL context current,
 // for the elements drawn in the previous frame. A new element is therefore first
 // rendered one frame after it appears.
+//
+// The renderer runs inside the frame sokol is already driving. GL state it changes
+// behind sokol's back — a framebuffer or texture it binds — has to be handed back
+// with gfx.reset_state_cache() before returning, or sokol may skip reapplying
+// bindings and draw the UI with stale ones.
 pub fn set_gl_surface_renderer(renderer GlSurfaceFn) {
 	g_gl_surface_renderer = renderer
 }
