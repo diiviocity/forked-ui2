@@ -4,6 +4,13 @@ pub type BuildFn = fn () Element
 
 pub type EventFn = fn (string)
 
+// GlSurfaceFn renders into an `opengl` element's texture. It runs before every
+// frame, for the elements drawn in the previous frame; gl_surface.v carries the
+// full contract. frame is in logical units; multiply by scale for framebuffer
+// pixels. height is the window height in logical units, for flipping to OpenGL's
+// bottom-left origin.
+pub type GlSurfaceFn = fn (id string, frame Rect, scale f64, height f64)
+
 // KeyFn receives normalized key strings: 'up', 'forward_delete', 'tab',
 // 'cmd+shift+r', 'f5', or text-view commands like 'text:editor:backspace'
 // and 'text:editor:line_break'.
@@ -249,6 +256,7 @@ pub enum Kind {
 	slider
 	switch_control
 	toggle_button
+	opengl
 }
 
 // MenuEntry is one right-click context menu item attached to an element.
@@ -762,6 +770,20 @@ pub fn image(id string, path string, frame Rect) Element {
 		id:         id
 		image_path: path
 		frame:      frame
+	}
+}
+
+// opengl reserves a surface for application-rendered GL content. The gg renderer
+// draws it from set_gl_surface_texture; native backends draw it as an empty, transparent
+// view.
+pub fn opengl(id string, frame Rect) Element {
+	return Element{
+		kind: .opengl
+		id: id
+		frame: frame
+		box: BoxStyle{
+			transparent: true
+		}
 	}
 }
 
