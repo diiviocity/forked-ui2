@@ -799,6 +799,13 @@ pub fn request_refresh() {
 	}
 }
 
+// refresh_on_demand reports whether the window redraws only when asked. The
+// Windows backend redraws on its own message loop and has no on_demand mode
+// yet.
+pub fn refresh_on_demand() bool {
+	return false
+}
+
 pub fn on_key(handler KeyFn) {
 	mut st := windows_state()
 	st.key_handler = handler

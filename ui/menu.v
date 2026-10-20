@@ -186,7 +186,9 @@ pub fn disabled(item MenuItem) MenuItem {
 
 // set_menu_bar installs the application's top level menu bar, replacing any
 // previous one. Call it before or after run_window: menus declared before the
-// window exists are installed as the application finishes launching.
+// window exists are installed as the application finishes launching. A call
+// from a thread or between frames asks for the frame that shows the bar; a
+// call from inside the frame being built is covered by that frame already.
 pub fn set_menu_bar(menus []Menu) {
 	mut st := menu_state()
 	st.menus = menus.clone()

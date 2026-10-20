@@ -166,6 +166,12 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 	__global g_drop_handler = DropFn(unsafe { nil })
 	__global g_key_consumed = false
 	__global g_gg_app = &GgApp{}
+	__global g_refresh_mode = RefreshMode.continuous
+	__global g_last_frame_ticks = i64(0)
+	// g_frame_running is true while on_frame builds and draws the window.
+	// menu_default reads it so a menu bar set during the frame does not ask
+	// for another one.
+	__global g_frame_running = false
 	__global g_text_values = map[string]string{}
 	__global g_text_props = map[string]string{}
 	__global g_text_editors = map[string]TextEditor{}
@@ -342,6 +348,24 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 		}, build_fn, event_fn)
 	}
 
+// RefreshMode selects how a window decides to redraw.
+//
+// continuous rebuilds and repaints on every vsync, which is what the
+// immediate backend has always done: anything can change between frames, so
+// nothing has to remember to ask for a repaint.
+//
+// on_demand rebuilds only when something asks: window and input events, `after`
+// timers, running animations, and application calls to request_refresh from
+// its own threads. Between those the frame callback draws nothing, Sokol still
+// throttles itself to the display, and the window idles at a fraction of the
+// continuous cost. An application whose frames come from outside the window —
+// a video surface fed by a player, for example — calls request_refresh from
+// the player thread whenever new content is ready.
+	pub enum RefreshMode {
+	continuous
+	on_demand
+	}
+
 // WindowOptions carries the window creation knobs run_window_with_options
 // accepts on top of what run_window takes positionally.
 	pub struct WindowOptions {
@@ -355,15 +379,21 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 	// Flat immediate-mode geometry gains nothing visible from 4x, and weak GPUs
 	// pay the fill rate for it; 1 turns antialiasing off.
 		sample_count int = 4
+		refresh    RefreshMode = .continuous
 	}
 
 // run_window_with_options opens the window with per-application control over
-// the antialiasing level. run_window and run keep their long-standing
-// behaviour: continuous redraw at 4x samples.
+// the antialiasing level and the refresh mode. run_window and run keep their
+// long-standing behaviour: continuous at 4x samples.
 	pub fn run_window_with_options(opts WindowOptions, build_fn BuildFn, event_fn EventFn) {
+		g_refresh_mode = opts.refresh
 		g_build_screen = build_fn
 		g_event_handler = event_fn
-		configure_animation_driver(request_refresh, false)
+		// In on_demand mode the loop sleeps between asks, so a running
+		// animation drives it from a thread: each tick asks for a frame until
+		// every animation has crossed its deadline. The continuous loop draws
+		// anyway and needs no driver thread.
+		configure_animation_driver(request_refresh, opts.refresh == .on_demand)
 		publish_menu_context(event_fn, opts.title, unsafe { nil })
 		// Choosing the font here rather than letting gg ask `fc-match` for one
 		// keeps the window legible and identical across distributions, and
@@ -381,6 +411,7 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 			min_width: opts.min_width
 			min_height: opts.min_height
 			sample_count: opts.sample_count
+			ui_mode: opts.refresh == .on_demand
 			create_window: true
 			window_title: opts.title
 			user_data: unsafe { voidptr(g_gg_app) }
@@ -391,18 +422,75 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 			max_dropped_files: 32
 			max_dropped_file_path_length: 4096
 		)
+		if opts.refresh == .on_demand {
+			spawn idle_keepalive_waker()
+		}
 		g_gg_app.ctx.run()
 	}
 
-	pub fn refresh() {
+// idle_keepalive_waker redraws an idle on_demand window at a slow fixed
+// rate. Every normal trigger — events, timers, animations, the application's
+// threads — asks for a redraw itself; this thread is for the ones that cannot
+// ask. On X11, sokol selects no Expose handling, so when a region of the window
+// becomes visible again nothing tells the loop, and with no compositor the
+// old pixels stay on screen. A redraw every second bounds how long any
+// surprise persists while costing about two frames out of each.
+	const idle_keepalive_ms = 1000
+
+	fn idle_keepalive_waker() {
+		for {
+			time.sleep(idle_keepalive_ms * time.millisecond)
+			// Frames flowing for another reason keep g_last_frame_ticks fresh;
+			// stepping over those intervals keeps the keep-alive from adding
+			// work on top of live traffic.
+			if time.ticks() - g_last_frame_ticks < idle_keepalive_ms {
+				continue
+			}
+			request_refresh()
+		}
 	}
 
-	// The immediate backend already rebuilds every frame, so both refresh entry
-	// points are intentionally scheduling no-ops.
+// wake_ui_loop hands gg's context a redraw ask. refresh_ui flips a boolean the
+// frame thread reads, so calling it off the UI thread is deliberate and safe;
+// libmpv's update callback and the timer threads land here.
+	fn wake_ui_loop() {
+		if g_gg_app.ctx == unsafe { nil } {
+			return
+		}
+		g_gg_app.ctx.refresh_ui()
+	}
+
+// refresh asks for a rebuild over whatever the application changed outside a
+// frame. Set the window's refresh mode to on_demand to get the effect; the
+// continuous loop was already drawing regardless.
+	pub fn refresh() {
+		if g_refresh_mode == .on_demand {
+			wake_ui_loop()
+		}
+	}
+
+// request_refresh asks for one more rebuild over whatever state the
+// application changed off the UI thread — new video frames, worker-thread
+// results. Set the window's refresh mode to on_demand to get the effect;
+// the continuous loop was already drawing regardless.
 	pub fn request_refresh() {
+		if g_refresh_mode == .on_demand {
+			wake_ui_loop()
+		}
+	}
+
+// refresh_on_demand reports whether the window redraws only when asked. It
+// lets an application skip scheduling wake timers whose only job is a redraw
+// ask: in continuous mode the loop reaches every state change within a frame
+// anyway.
+	pub fn refresh_on_demand() bool {
+		return g_refresh_mode == .on_demand
 	}
 
 	pub fn refresh_element(_id string, _element Element) {
+		if g_refresh_mode == .on_demand {
+			wake_ui_loop()
+		}
 	}
 
 	pub fn on_key(handler KeyFn) {
@@ -727,6 +815,11 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 		if app.ctx == unsafe { nil } {
 			return
 		}
+		g_last_frame_ticks = time.ticks()
+		g_frame_running = true
+		defer {
+			g_frame_running = false
+		}
 		mut ctx := app.ctx
 		// Some window managers can choose a client size different from the one
 		// requested in gg.Config before gg's cached resize event catches up. UI2
@@ -953,6 +1046,14 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 			return
 		}
 		target := hit_test(x, y)
+		if g_refresh_mode == .on_demand && target.long_press {
+			// check_long_press fires from inside drawn frames, and after the
+			// last input event only a few trailing frames follow; the ask keeps
+			// a frame alive past the deadline so the hold is not forgotten.
+			// Only long-press targets need it, so taps on everything else let
+			// the window go back to sleep.
+			after(0.55, fn () {})
+		}
 		if target.slider {
 			commit_slider(target, x, y)
 			return
