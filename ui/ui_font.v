@@ -93,8 +93,7 @@ fn wrap_text_lines_measured(text string, width f64, limit int, measure fn (strin
 			if lines.len >= limit - 1 {
 				// The last line there is room for. Everything still to come stays on it
 				// so the draw truncates it, rather than text quietly disappearing.
-				lines << text_with_overflow(candidate, words[word_index + 1..], paragraphs[
-					index + 1..])
+				lines << text_with_overflow(candidate, words[word_index + 1..], paragraphs[index + 1..])
 				return lines
 			}
 			lines << current
@@ -185,8 +184,8 @@ fn parse_font_metrics(data []u8) !FontMetrics {
 	}
 	metrics := FontMetrics{
 		units_per_em: font_u16(data, head + 18)
-		ascender: font_i16(data, hhea + 4)
-		descender: font_i16(data, hhea + 6)
+		ascender:     font_i16(data, hhea + 4)
+		descender:    font_i16(data, hhea + 6)
 	}
 	if metrics.units_per_em <= 0 || metrics.ascender - metrics.descender <= 0 {
 		return error('font has no usable vertical metrics')
