@@ -388,6 +388,13 @@ pub fn request_refresh() {
 	native_dispatch_main(cb)
 }
 
+// refresh_on_demand reports whether the window redraws only when asked. The
+// AppKit backend redraws on the run loop's own pacing and has no on_demand
+// mode yet.
+pub fn refresh_on_demand() bool {
+	return false
+}
+
 // scroll_offset returns the current vertical scroll position of a Scroll element.
 pub fn scroll_offset(id string) f64 {
 	st := state()

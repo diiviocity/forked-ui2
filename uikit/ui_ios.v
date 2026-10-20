@@ -151,6 +151,12 @@ pub fn request_refresh() {
 	macos.msg_void_sel_id_bool(g_button_handler, 'performSelectorOnMainThread:withObject:waitUntilDone:', macos.sel('vuiRefresh:'), objc_nil(), false)
 }
 
+// refresh_on_demand reports whether the window redraws only when asked. The
+// UIKit backend rebuilds on its own run loop and has no on_demand mode yet.
+pub fn refresh_on_demand() bool {
+	return false
+}
+
 pub fn text(id string) string {
 	view := g_views[id] or { return '' }
 	kind := g_view_kinds[id] or { Kind.view }
