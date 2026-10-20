@@ -913,6 +913,9 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 		}
 		match e.typ {
 			.mouse_down {
+				if voidptr(g_mouse_button_handler) != unsafe { nil } {
+					g_mouse_button_handler(int(e.mouse_button), true, f64(e.mouse_x), f64(e.mouse_y))
+				}
 				g_tooltip.dismiss()
 				if menu_bar_handle_down(f64(e.mouse_x), f64(e.mouse_y)) {
 					return
@@ -950,6 +953,9 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 				// The content moves under a pointer that stays put, so whatever
 				// ends up beneath it waits for a fresh rest.
 				g_tooltip.restart(time.ticks())
+				if voidptr(g_wheel_handler) != unsafe { nil } {
+					g_wheel_handler(f64(e.scroll_x), f64(e.scroll_y))
+				}
 				if menu_bar_open() {
 					return
 				}
@@ -970,6 +976,9 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 				update_hover()
 			}
 			.mouse_up {
+				if voidptr(g_mouse_button_handler) != unsafe { nil } {
+					g_mouse_button_handler(int(e.mouse_button), false, f64(e.mouse_x), f64(e.mouse_y))
+				}
 				if g_touch.down && g_touch.pointer_target.action_id.len > 0 {
 					handle_touch_up(f64(e.mouse_x), f64(e.mouse_y))
 					return
