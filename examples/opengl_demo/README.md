@@ -6,7 +6,7 @@ application renders into a GL texture
 from `set_gl_surface_renderer`, which runs before each frame on the UI thread with
 the GL context current, and passes the texture with `set_gl_surface_texture`.
 ui2 draws it as a quad in the UI's own pass, so menus and other overlays draw
-above it. The `vore` player uses this to show libmpv video.
+above it. A media player can use this to show video.
 
 Two things the renderer has to mind for:
 
