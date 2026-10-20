@@ -1104,7 +1104,8 @@ room, draws nothing and takes no clicks. Native menu bars are not hidden. Read t
 state with `menu_bar_hidden()`.
 
 `KeyEvent.repeat` is true for an autorepeat of a key that is still held, so an
-application can act on the first press only.
+application can act on the first press only. The custom renderer delivers it;
+native backends do not yet.
 
 ## Keyboard events
 
