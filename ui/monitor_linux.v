@@ -1,6 +1,8 @@
 // The X11 RandR extension knows which mode each output runs. The query opens
 // its own X connection and closes it, so a call may come before the window
-// runs, when sokol's display is not up yet.
+// runs, when sokol's display is not up yet. Once the window runs, sokol has
+// initialized Xlib for threads, so the extra connection is safe from any
+// thread; before that, this is the process's only X connection.
 module ui2
 
 #flag -lXrandr
