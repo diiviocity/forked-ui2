@@ -320,10 +320,38 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 	}
 
 	fn run_window_with_min_size(title string, width int, height int, min_width int, min_height int, build_fn BuildFn, event_fn EventFn) {
+		run_window_with_options(WindowOptions{
+			title:      title
+			width:      width
+			height:     height
+			min_width:  min_width
+			min_height: min_height
+		}, build_fn, event_fn)
+	}
+
+// WindowOptions carries the window creation knobs run_window_with_options
+// accepts on top of what run_window takes positionally.
+	pub struct WindowOptions {
+	pub:
+		title      string
+		width      int
+		height     int
+		min_width  int
+		min_height int
+	// sample_count is Sokol's antialiasing level for the window's framebuffer.
+	// Flat immediate-mode geometry gains nothing visible from 4x, and weak GPUs
+	// pay the fill rate for it; 1 turns antialiasing off.
+		sample_count int = 4
+	}
+
+// run_window_with_options opens the window with per-application control over
+// the antialiasing level. run_window and run keep their long-standing
+// behaviour: continuous redraw at 4x samples.
+	pub fn run_window_with_options(opts WindowOptions, build_fn BuildFn, event_fn EventFn) {
 		g_build_screen = build_fn
 		g_event_handler = event_fn
 		configure_animation_driver(request_refresh, false)
-		publish_menu_context(event_fn, title, unsafe { nil })
+		publish_menu_context(event_fn, opts.title, unsafe { nil })
 		// Choosing the font here rather than letting gg ask `fc-match` for one
 		// keeps the window legible and identical across distributions, and
 		// gives draw_text the metrics it needs to size text in points.
@@ -335,13 +363,13 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 			bg_color: hex_color(0xf4f6f8)
 			font_path: font_regular
 			custom_bold_font_path: font_bold
-			width: width
-			height: height
-			min_width: min_width
-			min_height: min_height
-			sample_count: 4
+			width: opts.width
+			height: opts.height
+			min_width: opts.min_width
+			min_height: opts.min_height
+			sample_count: opts.sample_count
 			create_window: true
-			window_title: title
+			window_title: opts.title
 			user_data: unsafe { voidptr(g_gg_app) }
 			init_fn: on_init
 			frame_fn: on_frame
