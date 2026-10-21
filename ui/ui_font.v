@@ -397,8 +397,10 @@ fn font_mono_preferences() []string {
 // letters a paragraph is set in. A text face only draws the scripts it was cut
 // for: the bundled Roboto stops at 927 code points, so the triangles, arrows
 // and check marks an interface labels its rows with land on glyph 0, the empty
-// box. `ui2` ships Noto Sans Symbols 2 and Noto Emoji for that reason, so those
-// boxes are gone with nothing installed on the machine; the rest are the symbol
+// box. `ui2` ships Noto Sans Symbols 2 and Noto Emoji for that reason, which
+// holds up for the misc-symbols and dingbat ranges; the arrows live in the wide
+// fallback faces font_symbol_paths appends from the machine (Noto Sans Symbols
+// and DejaVu Sans both carry U+2190). The rest of this list are the symbol
 // faces the three desktops come with. Symbols are looked for before emoji: the
 // two overlap around the dingbats, and a ✔ beside a line of text should be the
 // text-weight one rather than the emoji.
@@ -450,12 +452,23 @@ fn font_is_symbol_family(family string) bool {
 	return false
 }
 
+// font_symbol_path_limit caps the faces font_symbol_paths hands to fontstash.
+// A glyph the text font misses walks the whole chain once per code point and
+// size before the glyph cache takes over, and every face is loaded fully on a
+// rebind, so the list pays at both ends for ranges that rarely come up. Five
+// keeps the env override, the bundled faces, and the first two installed
+// families — the symbol face plus whatever follows it — inside the fallback
+// budget fontstash itself allows.
+const font_symbol_path_limit = 5
+
 // font_symbol_paths lists the files to search for a glyph the text font has no
-// outline for, in the order they are searched. Everything the application ships
-// comes first, and then at most one face off the machine, so an installed
-// symbol font can cover what the bundle does not without the window holding
-// another few megabytes of glyphs it will never draw. `UI2_FONT_SYMBOLS` names
-// a file to put ahead of both.
+// outline for, in the order they are searched, up to font_symbol_path_limit.
+// Everything the application ships comes first, and then every family from the
+// machine the list names, in the same order. The later families matter: Noto
+// Sans Symbols 2 holds the misc-symbols ranges but not the arrows at U+2190,
+// which sit in Noto Sans Symbols and DejaVu Sans, so stopping at the first
+// face the machine has would leave those arrows blank.
+// `UI2_FONT_SYMBOLS` names a file to put ahead of every other face.
 fn font_symbol_paths() []string {
 	families := font_symbol_fallback_families()
 	mut paths := []string{}
@@ -465,14 +478,23 @@ fn font_symbol_paths() []string {
 	}
 	bundled := font_index(font_bundle_dirs())
 	for family in families {
+		if paths.len >= font_symbol_path_limit {
+			break
+		}
 		path := font_lookup(bundled, family, false, false)
 		if path != '' && path !in paths {
 			paths << path
 		}
 	}
-	installed := font_first_available(font_index(font_system_dirs()), families, false, false)
-	if installed != '' && installed !in paths {
-		paths << installed
+	installed := font_index(font_system_dirs())
+	for family in families {
+		if paths.len >= font_symbol_path_limit {
+			break
+		}
+		path := font_lookup(installed, family, false, false)
+		if path != '' && path !in paths {
+			paths << path
+		}
 	}
 	return paths
 }
