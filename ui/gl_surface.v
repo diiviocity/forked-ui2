@@ -43,4 +43,10 @@ pub fn set_gl_surface_texture(id string, gl_texture u32, width int, height int) 
 		width:      width
 		height:     height
 	}
+	// The producer usually runs on its own thread, so without this ask the new
+	// texture would wait for unrelated work: on GL/D3D the loop re-presents the
+	// retained tree each vsync and would pick it up anyway, but on Metal an
+	// idle window draws nothing and the update would never reach the screen.
+	// The scheduler's queue is mutex guarded, so this is safe off the UI thread.
+	request_refresh()
 }

@@ -368,9 +368,16 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 // continuous cost. An application whose frames come from outside the window —
 // a video surface fed by a player, for example — calls request_refresh from
 // the player thread whenever new content is ready.
+//
+// manual suppresses the frame callback between explicit asks, like on_demand
+// did before the frame scheduler took over: refresh and request_refresh wake
+// the loop for exactly one coalesced frame, deadlines and running animations
+// wake their own continuation, and nothing else draws — no per-vsync present,
+// no keep-alive redraw.
 	pub enum RefreshMode {
 	continuous
 	on_demand
+	manual
 	}
 
 // WindowOptions carries the window creation knobs run_window_with_options
@@ -400,6 +407,10 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 			g_gg_app = &GgApp{}
 		}
 		g_refresh_mode = opts.refresh
+		// In manual mode gg suppresses the frame callback between asks, so the
+		// scheduler's wake hook revives it whenever new work, a running
+		// animation or an expired deadline needs a frame.
+		g_gg_app.scheduler.set_wake_fn(wake_ui_loop)
 		g_build_screen = build_fn
 		g_event_handler = event_fn
 		// In on_demand mode the loop sleeps between asks, so a running
@@ -424,15 +435,16 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 			min_width: opts.min_width
 			min_height: opts.min_height
 			sample_count: opts.sample_count
-			ui_mode: opts.refresh == .on_demand
+			// Manual mode suppresses the frame callback between asks; the
+			// scheduler's wake hook revives it. The other modes keep the
+			// callback flowing and gate builds/draws in the coordinator —
+			// gg's ui_mode would suppress it before it can drain worker
+			// messages or deadlines, and refresh_ui is not thread safe.
+			ui_mode: opts.refresh == .manual
 			create_window: true
 			window_title: opts.title
 			user_data: unsafe { voidptr(g_gg_app) }
 			init_fn: on_init
-			// gg's ui_mode suppresses this callback before it can drain worker
-			// messages or deadlines, and refresh_ui is not thread safe. Keep the
-			// presentation callback and gate builds/draws in our coordinator (1A).
-			ui_mode: false
 			cleanup_fn: on_cleanup
 			frame_fn: on_frame
 			event_fn: on_event
@@ -476,6 +488,17 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 	// it instead of touching controls, gg, or a shared model themselves.
 	pub fn ui_dispatcher() UiDispatcher {
 		return UiDispatcher{coordinator: g_gg_app.scheduler}
+	}
+
+// wake_ui_loop hands gg's context a redraw ask. refresh_ui flips a boolean the
+// frame thread reads, so calling it off the UI thread is deliberate and safe;
+// libmpv's update callback, the scheduler's wake hook and the timer threads
+// land here.
+	fn wake_ui_loop() {
+		if g_gg_app.ctx == unsafe { nil } {
+			return
+		}
+		g_gg_app.ctx.refresh_ui()
 	}
 
 // refresh asks for a rebuild over whatever the application changed outside a
@@ -944,6 +967,16 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 		work := app.scheduler.begin_frame(now) or { return }
 		defer { app.scheduler.finish_frame(work) }
 		ensure_symbol_fallbacks(ctx)
+		// Manual mode suppresses the frame callback between asks, so a pending
+		// visual deadline needs its own wake: schedule one one-shot timer that
+		// lands on the deadline. The other modes re-check the deadline from the
+		// flowing frame callback, and only long-press and tooltip rests set
+		// deadlines, so this stays rare.
+		if g_refresh_mode == .manual {
+			if deadline := app.scheduler.stats().next_deadline; deadline >= 0 {
+				after(f64(deadline-now) / 1000.0, fn () {})
+			}
+		}
 		if !text_measurement_exact() && ctx.font_inited {
 			// Text is measured from the first frame with fonts and their symbol
 			// fallbacks in place; measured earlier, a glyph only a fallback face

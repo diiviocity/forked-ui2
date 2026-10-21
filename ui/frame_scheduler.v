@@ -68,6 +68,11 @@ mut:
 	suspended             bool
 	closed                bool
 	tasks                 []FrameTask
+	// wake_fn is the loop wake for fully manual refresh modes: invalidate,
+	// deadlines and animation continuation call it so a suppressed frame
+	// callback still runs. It must only touch the platform loop's own
+	// synchronization; it runs under the coordinator mutex.
+	wake_fn fn ()
 }
 
 fn new_frame_coordinator() &FrameCoordinator {
@@ -99,15 +104,27 @@ fn (mut coordinator FrameCoordinator) invalidate_locked(reason RenderReason) {
 	}
 	coordinator.requests++
 	coordinator.generation++
-	if coordinator.pending_reasons.len > 0 {
-		coordinator.coalesced++
-	}
 	if reason !in coordinator.pending_reasons {
 		coordinator.pending_reasons << reason
+		// New work the loop may not know about: in fully manual refresh modes
+		// the frame callback stays suppressed between asks, so new pending work
+		// must wake it. Under platform-controlled loops the wake is a cheap
+		// redundant flag flip.
+		if coordinator.wake_fn != unsafe { nil } {
+			coordinator.wake_fn()
+		}
+	} else {
+		coordinator.coalesced++
 	}
 }
 
-// begin_frame takes a generation snapshot and detaches its reasons. Requests
+// set_wake_fn installs the loop wake used by manual refresh modes. Pass nil to
+// detach it.
+pub fn (mut coordinator FrameCoordinator) set_wake_fn(wake fn ()) {
+	coordinator.mutex.lock()
+	defer { coordinator.mutex.unlock() }
+	coordinator.wake_fn = wake
+}
 // arriving while the caller works therefore belong to the following frame.
 // now and deadlines use the same caller-supplied monotonic millisecond clock.
 fn (mut coordinator FrameCoordinator) begin_frame(now i64) ?FrameWork {
@@ -192,6 +209,12 @@ fn (mut coordinator FrameCoordinator) set_animation_active(active bool) {
 	defer { coordinator.mutex.unlock() }
 	if !coordinator.closed {
 		coordinator.animation_active = active
+		// A running animation expects its next frame: in fully manual refresh
+		// modes the loop stays suppressed between asks, so continuation must
+		// wake it.
+		if active && coordinator.wake_fn != unsafe { nil } {
+			coordinator.wake_fn()
+		}
 	}
 }
 

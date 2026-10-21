@@ -5,14 +5,16 @@ tree and then updates it when application work invalidates the window, and a
 static window reuses its retained tree. Input, model actions, resize, worker
 deliveries and animations request the work they need. Requests raised during a
 frame are kept for the next frame. `.continuous` restores the historical
-per-vsync rebuild loop:
+per-vsync rebuild loop, and `.manual` goes further: the frame callback stays
+suppressed between explicit `refresh`/`request_refresh` asks, with deadlines
+and running animations waking their own continuation:
 
 ```v
 ui2.run_window_with_options(ui2.WindowOptions{
 	title:   'App'
 	width:   640
 	height:  480
-	refresh: .continuous
+	refresh: .manual
 }, build, event)
 ```
 

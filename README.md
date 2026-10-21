@@ -55,8 +55,9 @@ current native/local edit, selection, focus, and (on native controls) input
 method composition. Use `set_text` for an explicit imperative replacement.
 
 The custom renderer is demand driven: it builds on demand and reuses its tree
-while idle, and `ui2.WindowOptions{refresh: .continuous}` restores the
-historical per-vsync rebuild loop. See
+while idle, `ui2.WindowOptions{refresh: .continuous}` restores the historical
+per-vsync rebuild loop, and `refresh: .manual` suppresses all drawing between
+explicit asks. See
 [render scheduling](docs/render-scheduling.md) for invalidation, worker
 delivery, window lifecycle and the acceptance fixture.
 
