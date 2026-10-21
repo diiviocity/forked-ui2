@@ -3637,14 +3637,21 @@ fn page_focused_text_area(direction int) {
 	}
 
 	fn draw_check_mark(ctx &gg.Context, x f64, y f64, size f64, color_hex u32) {
-		pen := gg.PenConfig{
-			color: hex_color(color_hex)
-			thickness: 2
-		}
-		ctx.draw_line_with_config(f32(x + size * 0.22), f32(y + size * 0.50),
-			f32(x + size * 0.42), f32(y + size * 0.70), pen)
-		ctx.draw_line_with_config(f32(x + size * 0.40), f32(y + size * 0.69),
-			f32(x + size * 0.79), f32(y + size * 0.29), pen)
+		// The check is the same two-segment stroke the styled checkboxes draw
+		// (see checkbox_mark_path), so every renderer's mark matches. Stroked
+		// as one polyline with round caps and joins rather than two gg lines,
+		// whose thick-line path anchors its rect at logical coordinates inside
+		// a rotation set up in device pixels: that left a seam at the elbow
+		// even at scale 1 and displaces the strokes off their endpoints at
+		// higher pixel densities.
+		path := path_polyline([
+			path_point(size * 0.26, size * 0.52)
+			path_point(size * 0.43, size * 0.69)
+			path_point(size * 0.75, size * 0.33)
+		], false)
+		contours := path_flatten(path, 0.3)
+		triangles := path_stroke_triangles(contours, math.max(1.5, size / 8), .round, .round)
+		shape_triangles(ctx, triangles, x, y, f64(ctx.scale), hex_color(color_hex))
 	}
 
 	fn draw_chevron_down(ctx &gg.Context, center_x f64, center_y f64, color_hex u32) {
