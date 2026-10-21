@@ -548,7 +548,7 @@ pub:
 	id                  string
 	frame               Rect
 	items               []ButtonGroupItem
-	orientation         BoxOrientation = .horizontal
+	orientation         LayoutOrientation = .horizontal
 	variant             ButtonVariant
 	outline             bool
 	fill                bool // Stretch the buttons over the frame instead of packing them.

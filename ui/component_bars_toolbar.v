@@ -11,7 +11,7 @@ pub:
 	id          string
 	frame       Rect
 	items       []BarItem
-	orientation BoxOrientation = .horizontal
+	orientation LayoutOrientation = .horizontal
 	// enabled false disables every command and the keyboard helper.
 	enabled bool = true
 	// hovered is the command under the pointer; keep it with toolbar_hover_from_event.

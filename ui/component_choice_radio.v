@@ -33,8 +33,8 @@ pub:
 	frame               Rect
 	options             []RadioOption
 	selected            string // Value of the checked option; empty checks none.
-	orientation         BoxOrientation = .vertical
-	enabled             bool           = true
+	orientation         LayoutOrientation = .vertical
+	enabled             bool              = true
 	accessibility_label string // Names the group for assistive technology; not drawn.
 	size                ComponentSize = .medium
 	theme               ComponentTheme

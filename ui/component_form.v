@@ -105,8 +105,8 @@ pub:
 	actions []FormAction
 	// label_layout puts labels above their controls (.vertical) or beside them
 	// (.horizontal), independently of columns.
-	label_layout BoxOrientation = .vertical
-	columns      int            = 1
+	label_layout LayoutOrientation = .vertical
+	columns      int               = 1
 	// collapse_below makes the form one column with labels above their
 	// controls while frame is narrower than this; zero never collapses.
 	collapse_below  f64
@@ -1033,8 +1033,8 @@ pub:
 	id              string
 	frame           Rect
 	field           FormField
-	label_layout    BoxOrientation = .vertical
-	label_width     f64            = 140
+	label_layout    LayoutOrientation = .vertical
+	label_width     f64               = 140
 	label_align     Align
 	label_text_size f64
 	size            ComponentSize = .medium

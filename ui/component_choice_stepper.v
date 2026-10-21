@@ -16,9 +16,9 @@ pub:
 	frame       Rect
 	items       []StepperItem
 	current     int // Index of the current step; items.len marks every step completed.
-	orientation BoxOrientation = .horizontal
-	clickable   bool           = true // False draws the steps without making them buttons.
-	enabled     bool           = true
+	orientation LayoutOrientation = .horizontal
+	clickable   bool              = true // False draws the steps without making them buttons.
+	enabled     bool              = true
 	text_center bool // Horizontal only: center each step's text under its indicator.
 	size        ComponentSize = .medium
 	theme       ComponentTheme

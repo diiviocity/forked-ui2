@@ -567,8 +567,8 @@ pub:
 	// percentage to the description. It is ignored in other statuses.
 	progress ?f64
 	tooltip  string
-	axis     BoxOrientation = .horizontal // Vertical puts the preview above the text.
-	size     ComponentSize  = .medium
+	axis     LayoutOrientation = .horizontal // Vertical puts the preview above the text.
+	size     ComponentSize     = .medium
 	// hide_media and hide_content leave out the preview or the text; a
 	// vertical attachment without text is a square image tile.
 	hide_media   bool

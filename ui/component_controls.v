@@ -384,7 +384,7 @@ pub:
 	frame       Rect
 	options     []CheckboxOption
 	selected    []string // Values of the checked options.
-	orientation BoxOrientation = .vertical
+	orientation LayoutOrientation = .vertical
 	// select_all, when not empty, is the label of a parent checkbox shown first:
 	// checked when every enabled option is, indeterminate when only some are,
 	// and toggling every enabled option at once. In a vertical group the

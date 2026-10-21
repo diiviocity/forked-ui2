@@ -176,8 +176,8 @@ pub struct SeparatorConfig {
 pub:
 	id          string
 	frame       Rect
-	orientation BoxOrientation = .horizontal
-	thickness   f64            = 1
+	orientation LayoutOrientation = .horizontal
+	thickness   f64               = 1
 	theme       ComponentTheme
 }
 

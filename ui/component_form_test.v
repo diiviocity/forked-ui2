@@ -126,7 +126,7 @@ fn test_form_place_leaves_holes_and_gives_sections_their_own_row() {
 // As GPUI Kit's own test: label orientation and grid columns are independent.
 fn test_form_label_layout_is_independent_of_field_columns() {
 	for width in [360.0, 800.0] {
-		for orientation in [BoxOrientation.horizontal, .vertical] {
+		for orientation in [LayoutOrientation.horizontal, .vertical] {
 			config := FormConfig{
 				id:           'form'
 				frame:        rect(0, 0, width, 0)

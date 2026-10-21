@@ -355,7 +355,7 @@ pub:
 	// on_scroll reports the id, and rebuild when range() changes.
 	offset              f64
 	overscan            int               = 3
-	orientation         BoxOrientation    = .vertical
+	orientation         LayoutOrientation = .vertical
 	item                VirtualListItemFn = unsafe { nil }
 	transparent         bool // Leave the background unpainted.
 	accessibility_label string
