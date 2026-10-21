@@ -982,8 +982,9 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 		// flowing frame callback, and only long-press and tooltip rests set
 		// deadlines, so this stays rare.
 		if g_refresh_mode == .manual {
-			if deadline := app.scheduler.stats().next_deadline; deadline >= 0 {
-				after(f64(deadline-now) / 1000.0, fn () {})
+			deadline := app.scheduler.stats().next_deadline
+			if deadline >= 0 {
+				after(f64(deadline - now) / 1000.0, fn () {})
 			}
 		}
 		if !text_measurement_exact() && ctx.font_inited {
