@@ -176,6 +176,10 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 	__global g_gg_app = &GgApp{}
 	__global g_refresh_mode = RefreshMode.on_demand
 	__global g_last_frame_ticks = i64(0)
+	// Reused by the rounded-corner drawing, so a frame's controls allocate no points.
+	__global g_outline_points = []f64{}
+	__global g_outline_outer = []f64{}
+	__global g_outline_inner = []f64{}
 	__global g_present_on_demand = false
 	// g_frame_running is true while on_frame builds and draws the window.
 	// menu_default reads it so a menu bar set during the frame does not ask
@@ -3489,7 +3493,12 @@ fn page_focused_text_area(direction int) {
 		r := math.max(0, math.min(radius, math.min(w, h) / 2))
 		scale := f64(ctx.scale)
 		segments := int(math.min(math.max(math.sqrt(r * scale) * 1.5, 2), 16))
-		points := rounded_outline(x, y, w, h, r, segments)
+		mut points := g_outline_points
+		points.clear()
+		rounded_outline(mut points, x, y, w, h, r, segments)
+		unsafe {
+			g_outline_points = points
+		}
 		if c.a != 255 {
 			sgl.load_pipeline(ctx.pipeline.alpha)
 		}
@@ -3497,12 +3506,12 @@ fn page_focused_text_area(direction int) {
 		cx := f32((x + w / 2) * scale)
 		cy := f32((y + h / 2) * scale)
 		sgl.begin_triangles()
-		for i in 0 .. points.len {
-			a := points[i]
-			b := points[(i + 1) % points.len]
+		count := points.len / 2
+		for i in 0 .. count {
+			j := (i + 1) % count
 			sgl.v2f(cx, cy)
-			sgl.v2f(f32(a[0] * scale), f32(a[1] * scale))
-			sgl.v2f(f32(b[0] * scale), f32(b[1] * scale))
+			sgl.v2f(f32(points[2 * i] * scale), f32(points[2 * i + 1] * scale))
+			sgl.v2f(f32(points[2 * j] * scale), f32(points[2 * j + 1] * scale))
 		}
 		sgl.end()
 	}
@@ -3746,18 +3755,18 @@ fn page_focused_text_area(direction int) {
 	// rounded_outline lists points around a rounded rectangle, clockwise from the
 	// start of its top-left corner, with the same count whatever the radius so
 	// an outer and an inner outline pair up point for point.
-	fn rounded_outline(x f64, y f64, w f64, h f64, radius f64, segments int) [][]f64 {
+	fn rounded_outline(mut points []f64, x f64, y f64, w f64, h f64, radius f64, segments int) {
 		r := math.max(0, math.min(radius, math.min(w, h) / 2))
-		centers := [[x + r, y + r], [x + w - r, y + r], [x + w - r, y + h - r], [x + r, y + h - r]]
-		mut points := [][]f64{cap: 4 * (segments + 1)}
-		for corner, center in centers {
+		for corner in 0 .. 4 {
+			cx := if corner == 1 || corner == 2 { x + w - r } else { x + r }
+			cy := if corner < 2 { y + r } else { y + h - r }
 			start := math.pi * (1.0 + 0.5 * f64(corner))
 			for i in 0 .. segments + 1 {
 				angle := start + math.pi / 2 * f64(i) / f64(segments)
-				points << [center[0] + r * math.cos(angle), center[1] + r * math.sin(angle)]
+				points << cx + r * math.cos(angle)
+				points << cy + r * math.sin(angle)
 			}
 		}
-		return points
 	}
 
 	// draw_rounded_ring draws an even border that follows a box's rounded
@@ -3767,19 +3776,29 @@ fn page_focused_text_area(direction int) {
 			return
 		}
 		segments := int(math.max(4, math.min(16, radius / 2)))
-		outer := rounded_outline(x, y, w, h, radius, segments)
-		inner := rounded_outline(x + width, y + width, w - 2 * width, h - 2 * width, radius - width,
+		mut outer := g_outline_outer
+		mut inner := g_outline_inner
+		outer.clear()
+		inner.clear()
+		rounded_outline(mut outer, x, y, w, h, radius, segments)
+		rounded_outline(mut inner, x + width, y + width, w - 2 * width, h - 2 * width, radius - width,
 			segments)
+		unsafe {
+			g_outline_outer = outer
+		}
+		unsafe {
+			g_outline_inner = inner
+		}
+		count := outer.len / 2
 		c := hex_color(color_hex)
 		scale := f64(ctx.scale)
 		sgl.load_pipeline(ctx.pipeline.alpha)
 		sgl.c4b(c.r, c.g, c.b, c.a)
 		sgl.begin_triangle_strip()
-		for i in 0 .. outer.len + 1 {
-			o := outer[i % outer.len]
-			n := inner[i % inner.len]
-			sgl.v2f(f32(o[0] * scale), f32(o[1] * scale))
-			sgl.v2f(f32(n[0] * scale), f32(n[1] * scale))
+		for i in 0 .. count + 1 {
+			k := i % count
+			sgl.v2f(f32(outer[2 * k] * scale), f32(outer[2 * k + 1] * scale))
+			sgl.v2f(f32(inner[2 * k] * scale), f32(inner[2 * k + 1] * scale))
 		}
 		sgl.end()
 	}
