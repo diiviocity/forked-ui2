@@ -29,7 +29,7 @@ frame. The handle belongs to that window; after close, `post` returns `false`.
 `ui2.render_stats()` reports callbacks, builds, draws, flushes and pending work.
 On Metal, idle callbacks skip both builds and draws. On X11 with EGL or GLX they skip
 them too, once sokol honors `sapp_set_present_on_demand`: a frame that was not drawn
-is not presented. The keep-alive then repaints an idle window once a second, so
+is not presented. The keep-alive repaints the retained tree about every two seconds, so
 Expose is served. Linux builds need a sokol that exports that function; stock V does
 not have it yet. GL, EGL and D3D elsewhere present after each platform callback, so
 idle callbacks repaint the retained tree. Native
