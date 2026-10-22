@@ -176,6 +176,7 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 	__global g_gg_app = &GgApp{}
 	__global g_refresh_mode = RefreshMode.on_demand
 	__global g_last_frame_ticks = i64(0)
+	__global g_present_on_demand = false
 	// g_frame_running is true while on_frame builds and draws the window.
 	// menu_default reads it so a menu bar set during the frame does not ask
 	// for another one.
@@ -886,14 +887,24 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 
 	// ── Frame & event loop ─────────────────────────────────────────────
 
+	fn C.sapp_set_present_on_demand(enabled bool) bool
+	fn C.sapp_request_present()
+
 	fn on_init(app &GgApp) {
-		// Sokol's GL/EGL/D3D loops swap even when frame_fn returns early. Their
-		// discarded backbuffers need a full paint; only the Metal path can skip
-		// submission safely until UI2 owns presentation in the platform embedder.
+		// Sokol's loops swap even when frame_fn returns early, so an undrawn backbuffer
+		// can be presented on drivers that discard it. Metal skips idle callbacks. X11
+		// skips them too when sokol honors sapp_set_present_on_demand: frames UI2 did
+		// not draw are not presented, so the window keeps its last picture. Other
+		// backends repaint the retained tree on every callback.
+		$if gg_record ? {
+		} $else $if linux {
+			g_present_on_demand = g_refresh_mode != .continuous && C.sapp_set_present_on_demand(true)
+		}
 		// A reference field of an immutable pointer cannot be popped through to a
 		// mut method on V 0.5.2; bind it through a mutable local instead.
 		mut scheduler := app.scheduler
-		scheduler.set_presentation_required(gfx.query_backend() != .metal_macos)
+		scheduler.set_presentation_required(gfx.query_backend() != .metal_macos
+			&& !g_present_on_demand)
 		if voidptr(g_build_screen) == unsafe { nil } {
 			custom_fire_window_ready()
 			return
@@ -942,7 +953,9 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 		if app.scheduler.is_closed() || app.ctx == unsafe { nil } || app.draining_tasks {
 			return
 		}
-		g_last_frame_ticks = time.ticks()
+		if !g_present_on_demand {
+			g_last_frame_ticks = time.ticks()
+		}
 		g_frame_running = true
 		defer {
 			g_frame_running = false
@@ -1065,6 +1078,12 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 		}
 		ctx.end()
 		app.scheduler.record_draw()
+		if g_present_on_demand {
+			// Idle callbacks present nothing, so the keep-alive measures idle time from the
+			// last frame that was presented.
+			C.sapp_request_present()
+			g_last_frame_ticks = time.ticks()
+		}
 		app.scheduler.set_deadline(custom_visual_deadline())
 		app.scheduler.set_animation_active(custom_animations_need_frame(app.declared_root))
 	}

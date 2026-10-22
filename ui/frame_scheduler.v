@@ -83,7 +83,8 @@ fn new_frame_coordinator() &FrameCoordinator {
 
 // Some platform loops present their swapchain after every callback, even when
 // UI2 issues no commands. Those backends must paint the retained declaration on
-// idle callbacks until the embedder can suppress presentation itself.
+// idle callbacks until the embedder can suppress presentation itself; X11 does
+// so once sokol honors sapp_set_present_on_demand (see on_init in ui_immediate.c.v).
 fn (mut coordinator FrameCoordinator) set_presentation_required(required bool) {
 	coordinator.mutex.lock()
 	defer { coordinator.mutex.unlock() }
