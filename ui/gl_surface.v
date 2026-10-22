@@ -43,10 +43,17 @@ pub fn set_gl_surface_texture(id string, gl_texture u32, width int, height int) 
 		width:      width
 		height:     height
 	}
-	// The producer usually runs on its own thread, so without this ask the new
-	// texture would wait for unrelated work: on GL/D3D the loop re-presents the
-	// retained tree each vsync and would pick it up anyway, but on Metal an
-	// idle window draws nothing and the update would never reach the screen.
-	// The scheduler's queue is mutex guarded, so this is safe off the UI thread.
+	// A producer that runs outside the frame — its render thread handed the
+	// texture over through another channel, or native backends let the
+	// application call here between frames — needs this ask: without it, on
+	// Metal an idle window draws nothing and the update would never reach the
+	// screen. A producer inside the surface renderer runs in the frame ui2 is
+	// already building, whose sync consumes the request; an ask there
+	// schedules a second frame with nothing new to show, which loops for as
+	// long as the surface is handed over every frame. The scheduler's queue is
+	// mutex guarded, so this is safe off the UI thread.
+	if g_frame_running {
+		return
+	}
 	request_refresh()
 }
