@@ -474,7 +474,7 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 // an idle window has nothing new to build.
 	// The keep-alive checks the clock every idle_keepalive_check_ms and repaints once the
 	// last presented frame is idle_keepalive_period_ms old.
-	const idle_keepalive_check_ms = 1000
+	const idle_keepalive_check_ms = 5000
 	const idle_keepalive_period_ms = 10000
 
 	fn idle_keepalive_waker() {
@@ -2554,7 +2554,25 @@ fn page_focused_text_area(direction int) {
 			g_scroll_content_h.delete(id)
 			g_scroll_offsets_x.delete(id)
 			g_scroll_content_w.delete(id)
+			// Auxiliary scroll state lives in separate maps; a dead id must
+			// release every one of them or it leaks across frame lifetimes.
+			g_scroll_viewports.delete(id)
+			g_pending_scroll.delete(id)
+			g_scrollbar_geometries.delete(id)
+			g_pending_scroll_x.delete(id)
+			g_scrollbar_geometries_x.delete(id)
+			g_scroll_parents.delete(id)
+			g_scroll_areas.delete(id)
 		}
+		// g_scroll_order survives only entries for live scroll areas; the
+		// draw pass iterates it to keep stacking order stable.
+		mut live_order := []string{}
+		for id in g_scroll_order {
+			if id in g_active_scrolls {
+				live_order << id
+			}
+		}
+		g_scroll_order = live_order
 		for id in g_text_area_layouts.keys() {
 			if id !in g_active_fields || (g_text_kinds[id] or { Kind.screen }) != .text_area {
 				g_text_area_layouts.delete(id)
@@ -2571,6 +2589,11 @@ fn page_focused_text_area(direction int) {
 			image_id := g_image_ids[path] or { continue }
 			image_ctx.remove_cached_image_by_idx(image_id)
 			g_image_ids.delete(path)
+		}
+		// Open dropdown state refers to an element id; if the id left the tree,
+		// the popup can never close by itself.
+		if g_open_dropdown.len > 0 && g_open_dropdown !in g_active_fields {
+			close_dropdown()
 		}
 	}
 
