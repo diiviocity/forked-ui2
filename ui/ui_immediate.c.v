@@ -1032,19 +1032,19 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 			eprintln('ui2: ${err}')
 			return
 		}
-		g_hit_targets = []HitTarget{}
-		g_hover_regions = []HoverRegion{}
+		g_hit_targets.clear()
+		g_hover_regions.clear()
 		g_hover_chain = []string{}
 		g_tooltip_targets.clear()
 		g_tooltip_owners = 0
 		reset_scroll_frame()
-		g_active_fields = map[string]bool{}
-		g_active_sliders = map[string]bool{}
-		g_active_switches = map[string]bool{}
-		g_active_checkboxes = map[string]bool{}
-		g_active_toggles = map[string]bool{}
-		g_active_scrolls = map[string]bool{}
-		g_active_images = map[string]bool{}
+		g_active_fields.clear()
+		g_active_sliders.clear()
+		g_active_switches.clear()
+		g_active_checkboxes.clear()
+		g_active_toggles.clear()
+		g_active_scrolls.clear()
+		g_active_images.clear()
 		// Image resources must be available before starting the GPU pass.
 		preload_images(root)
 		if voidptr(g_gl_surface_renderer) != unsafe { nil } {
@@ -4225,8 +4225,9 @@ fn page_focused_text_area(direction int) {
 			vertical_align: .middle
 		}
 		line_h := font_line_height(style.size)
-		parts := if style.lines > 1 {
-			wrap_text_lines(ctx, t, w, style.lines, cfg)
+		line_budget := text_line_budget(style)
+		parts := if line_budget > 1 {
+			wrap_text_lines(ctx, t, w, line_budget, cfg)
 		} else {
 			[t]
 		}
