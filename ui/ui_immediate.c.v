@@ -387,7 +387,10 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 	}
 
 // WindowOptions carries the window creation knobs run_window_with_options
-// accepts on top of what run_window takes positionally.
+// accepts on top of what run_window takes positionally. gl_load scopes which
+// EGL vendor libraries glvnd may load before the window's GL context
+// initializes (Linux only; see GlLoad), and UI2_GL_VENDOR overrides it
+// without a recompile.
 	pub struct WindowOptions {
 	pub:
 		title      string
@@ -400,14 +403,20 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 	// pay the fill rate for it; 1 turns antialiasing off.
 		sample_count int = 4
 		refresh    RefreshMode = .on_demand
+		gl_load    GlLoad = .auto
 	}
 
 // run_window_with_options opens the window with per-application control over
-// the antialiasing level and the refresh mode. run_window and run default the
-// custom renderer to on_demand, where the frame scheduler coalesces asks and
-// leaves the retained tree untouched while nothing is pending; set
-// refresh: .continuous to restore the historical per-vsync rebuild loop.
+// the antialiasing level, the refresh mode and the GL vendor scope.
+// run_window and run default the custom renderer to on_demand, where the
+// frame scheduler coalesces asks and leaves the retained tree untouched while
+// nothing is pending; set refresh: .continuous to restore the historical
+// per-vsync rebuild loop. The GL scope is applied before sokol can open its
+// display: glvnd reads the vendor list at the first EGL call, and once a
+// vendor's userspace stack is mapped the memory is spent for the lifetime of
+// the process.
 	pub fn run_window_with_options(opts WindowOptions, build_fn BuildFn, event_fn EventFn) {
+		configure_gl_libraries(opts.gl_load)
 		// A dispatcher retained by an old worker stays attached to its closed window.
 		if g_gg_app.scheduler.is_closed() {
 			g_gg_app = &GgApp{}
@@ -2572,7 +2581,9 @@ fn page_focused_text_area(direction int) {
 				live_order << id
 			}
 		}
-		g_scroll_order = live_order
+		// The purge runs on the sweep path; the local array must not alias
+		// the global that outlives this frame.
+		g_scroll_order = live_order.clone()
 		for id in g_text_area_layouts.keys() {
 			if id !in g_active_fields || (g_text_kinds[id] or { Kind.screen }) != .text_area {
 				g_text_area_layouts.delete(id)
