@@ -465,18 +465,21 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 // threads — asks for a redraw itself; this thread is for the ones that cannot
 // ask. On X11, sokol selects no Expose handling, so when a region of the window
 // becomes visible again nothing tells the loop, and with no compositor the
-// old pixels stay on screen. A repaint about every two seconds bounds how long
+// old pixels stay on screen. A repaint about every ten seconds bounds how long
 // any surprise persists. It repaints the retained tree without rebuilding it:
 // an idle window has nothing new to build.
-	const idle_keepalive_ms = 1000
+	// The keep-alive checks the clock every idle_keepalive_check_ms and repaints once the
+	// last presented frame is idle_keepalive_period_ms old.
+	const idle_keepalive_check_ms = 1000
+	const idle_keepalive_period_ms = 10000
 
 	fn idle_keepalive_waker() {
 		for {
-			time.sleep(idle_keepalive_ms * time.millisecond)
+			time.sleep(idle_keepalive_check_ms * time.millisecond)
 			// Frames flowing for another reason keep g_last_frame_ticks fresh;
 			// stepping over those intervals keeps the keep-alive from adding
 			// work on top of live traffic.
-			if time.ticks() - g_last_frame_ticks < idle_keepalive_ms {
+			if time.ticks() - g_last_frame_ticks < idle_keepalive_period_ms {
 				continue
 			}
 			invalidate_custom_paint()
