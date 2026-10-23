@@ -147,15 +147,15 @@ fn egl_vendor_initializes(manifest string) bool {
 		// Child: probe the pinned vendor and die with the verdict.
 		os.setenv('__EGL_VENDOR_LIBRARY_FILENAMES', manifest, true)
 		dpy := C.eglGetDisplay(voidptr(0)) // EGL_DEFAULT_DISPLAY
-		if dpy == 0 {
+		if dpy == EGLDisplay(0) {
 			C._exit(1)
 		}
-		mut major := i32(0)
-		mut minor := i32(0)
-		if C.eglInitialize(voidptr(dpy), &major, &minor) != 1 {
+		mut major := EGLint(0)
+		mut minor := EGLint(0)
+		if C.eglInitialize(dpy, &major, &minor) != 1 {
 			C._exit(1)
 		}
-		C.eglTerminate(voidptr(dpy))
+		C.eglTerminate(dpy)
 		C._exit(0)
 	}
 	mut status := i32(0)
@@ -167,12 +167,17 @@ fn C.fork() i32
 
 fn C.wait(status &i32) i32
 
+// The EGL types match sokol's declarations in vlib/sokol/sapp/sapp_linux.c.v:
+// when sokol is linked in, the same C functions are declared twice, and a
+// mismatch in the declared signatures or the alias backing them up makes the
+// V compiler report a C-declaration clash before any of this code compiles.
 type EGLDisplay = voidptr
+type EGLint = i32
 
 fn C.eglGetDisplay(native_display voidptr) EGLDisplay
 
-fn C.eglInitialize(display voidptr, major &i32, minor &i32) int
+fn C.eglInitialize(display EGLDisplay, major &EGLint, minor &EGLint) int
 
-fn C.eglTerminate(display voidptr) int
+fn C.eglTerminate(display EGLDisplay) int
 
 fn C._exit(status i32)
