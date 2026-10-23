@@ -481,7 +481,11 @@ fn inputs_group_config(text string) InputGroupConfig {
 fn test_input_group_layout_and_clear_button() {
 	layout := input_group_layout(inputs_group_config('gpui'))
 	assert layout.leading == [rect(0, 0, 32, 32)]
-	go_width := component_text_width_estimate('Go', 14) * 1.08 + 16 + 4
+	// The button width follows input_group_addon_width's order of operations
+	// (estimate + 2*padding, then padding/2 plus the bold slack) so the f64
+	// accumulation matches bit for bit: regrouping it as estimate * 1.08
+	// rounds one ulp differently.
+	go_width := component_text_width_estimate('Go', 14) + 16 + (4 + component_text_width_estimate('Go', 14) * 0.08)
 	assert layout.trailing == [rect(300 - go_width, 0, go_width, 32)]
 	assert layout.field == rect(32, 0, 300 - 32 - go_width, 32)
 	assert layout.clear == rect(layout.field.x + layout.field.width - 31, 1, 30, 30)

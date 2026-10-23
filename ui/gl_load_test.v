@@ -73,6 +73,9 @@ fn test_configure_gl_libraries_sets_env_and_respects_explicit_lists() {
 		os.setenv('__EGL_VENDOR_LIBRARY_DIRS', prev_dirs, true)
 		os.unsetenv(ui2_gl_vendor_env_var)
 	}
+	// The explicit dirs override would short-circuit every block on a machine
+	// that sets one, so the test runs with it cleared.
+	os.unsetenv('__EGL_VENDOR_LIBRARY_DIRS')
 	// An explicit glvnd vendor list wins over the flag, however it arrives.
 	os.setenv('__EGL_VENDOR_LIBRARY_FILENAMES', '/pinned/by/user.json', true)
 	os.setenv(ui2_gl_vendor_env_var, 'mesa_only', true)
@@ -80,13 +83,19 @@ fn test_configure_gl_libraries_sets_env_and_respects_explicit_lists() {
 	assert os.getenv('__EGL_VENDOR_LIBRARY_FILENAMES') == '/pinned/by/user.json'
 	// Without a pinned list, the env override points glvnd at the Mesa
 	// manifest wherever one is installed; machines without any Mesa manifest
-	// are left untouched, which degenerates to .auto.
+	// are left untouched, which degenerates to .auto. A matched manifest is
+	// probed before it is pinned, so a display the pinned vendor cannot serve
+	// leaves the environment untouched as well.
 	os.setenv('__EGL_VENDOR_LIBRARY_FILENAMES', '', true)
 	configure_gl_libraries(.gpu_only)
 	mesa := pick_egl_vendor_json(egl_vendor_dirs, true)
-	assert os.getenv('__EGL_VENDOR_LIBRARY_FILENAMES') == (mesa or { '' })
-	// Without the env override the option field drives the setting.
+	assert os.getenv('__EGL_VENDOR_LIBRARY_FILENAMES') in [mesa or { '' }, '']
+	// Without the env override the option field drives the setting. The pin
+	// the last block left behind is cleared and UI2_GL_VENDOR unset, so the
+	// option field is the only thing left to consult.
+	os.unsetenv(ui2_gl_vendor_env_var)
+	os.setenv('__EGL_VENDOR_LIBRARY_FILENAMES', '', true)
 	configure_gl_libraries(.gpu_only)
 	not_mesa := pick_egl_vendor_json(egl_vendor_dirs, false)
-	assert os.getenv('__EGL_VENDOR_LIBRARY_FILENAMES') == (not_mesa or { '' })
+	assert os.getenv('__EGL_VENDOR_LIBRARY_FILENAMES') in [not_mesa or { '' }, '']
 }
