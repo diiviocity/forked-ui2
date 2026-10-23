@@ -722,8 +722,10 @@ fn animations_need_frames(now i64) bool {
 	return active
 }
 
-// Animation timestamps share a monotonic clock across starts, presentation
-// callbacks and the native driver. Wall-clock changes must not jump a tween.
+// Animation timestamps share the wall clock with `after()` timer deadlines and
+// the tests that drive both. The cost of sharing is that NTP corrections or a
+// manual clock change jump tweens; the `after()` pass would misfire far worse
+// on a split clock.
 fn animation_now_ms() i64 {
 	// Animation stamps, timer deadlines and the tests that drive both share
 	// time.ticks(): wall-clock milliseconds. A monotonic clock here would
