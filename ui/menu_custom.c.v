@@ -32,6 +32,10 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 	const menubar_shortcut_text = u32(0x64748b)
 	const menubar_separator_color = u32(0xe2e8f0)
 
+	// g_menubar_title_text is the bar titles' colour, settable by the host:
+	// the titles are the part of the bar a host may want in its own colours.
+	__global g_menubar_title_text = u32(0x1f2937)
+
 	// MenuBarHit is one clickable region of the drawn bar. `path` locates it:
 	// a one element path is a bar title, a longer one walks down the open
 	// panels, so its last element is the row's index in the deepest one.
@@ -77,10 +81,15 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 
 	fn menu_bar_title_style() TextStyle {
 		return TextStyle{
-			color: menubar_text
+			color: g_menubar_title_text
 			size: 13
 			align: .left
 		}
+	}
+
+	// set_menu_bar_title_color recolours the bar's titles.
+	pub fn set_menu_bar_title_color(color u32) {
+		g_menubar_title_text = color
 	}
 
 	fn menu_bar_row_style(enabled bool) TextStyle {
