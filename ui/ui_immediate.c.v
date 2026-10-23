@@ -509,15 +509,17 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 		return UiDispatcher{coordinator: g_gg_app.scheduler}
 	}
 
-// wake_ui_loop hands gg's context a redraw ask. refresh_ui flips a boolean the
-// frame thread reads, so calling it off the UI thread is deliberate and safe;
-// libmpv's update callback, the scheduler's wake hook and the timer threads
-// land here.
+// wake_ui_loop hands gg's context a redraw ask and interrupts the loop's
+// sleep. refresh_ui alone would leave the frame waiting for the loop's next
+// deadline — with the deadline hook installed that can be never, since an
+// idle window reports no deadline and no X event is coming. sapp_wake is a
+// nonblocking pipe write, so it stays safe under the coordinator mutex.
 	fn wake_ui_loop() {
 		if g_gg_app.ctx == unsafe { nil } {
 			return
 		}
 		g_gg_app.ctx.refresh_ui()
+		C.sapp_wake()
 	}
 
 // refresh asks for a rebuild over whatever the application changed outside a
@@ -906,6 +908,26 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 
 	fn C.sapp_set_present_on_demand(enabled bool) bool
 	fn C.sapp_request_present()
+	// The X11 loop's deadline hook: before each sleep sokol asks this function
+	// how long it may wait. A negative return means nothing is scheduled, so
+	// the loop waits on its poll set — an X event or a sapp_wake — alone.
+	fn C.sapp_set_frame_deadline_cb(cb fn () f64)
+	// sapp_wake interrupts the loop's sleep from any thread. It is a plain
+	// nonblocking write to a pipe in data-segment memory, so unlike the
+	// scheduler's invalidate it is safe from threads the GC does not know.
+	fn C.sapp_wake()
+
+// ui2_frame_deadline_cb tells sokol how long the event loop may sleep before
+// the next scheduled frame. It runs on the frame thread just before the loop
+// sleeps, so the scheduler's deadline — set at the end of the last frame — is
+// already current, and reading it needs no extra synchronization.
+	fn ui2_frame_deadline_cb() f64 {
+		stats := g_gg_app.scheduler.stats()
+		if stats.next_deadline < 0 {
+			return -1.0
+		}
+		return f64(stats.next_deadline - renderer_now_ms()) / 1000.0
+	}
 
 	fn on_init(app &GgApp) {
 		// Sokol's loops swap even when frame_fn returns early, so an undrawn backbuffer
@@ -916,6 +938,13 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 		$if gg_record ? {
 		} $else $if linux {
 			g_present_on_demand = g_refresh_mode != .continuous && C.sapp_set_present_on_demand(true)
+			// The deadline hook makes the X11 loop sleep until the earliest of
+			// the scheduler's next deadline, an X event or a sapp_wake, instead
+			// of pacing itself at the swap interval all night. Continuous mode
+			// draws every frame and must keep the stock pacing.
+			if g_refresh_mode != .continuous {
+				C.sapp_set_frame_deadline_cb(ui2_frame_deadline_cb)
+			}
 		}
 		// A reference field of an immutable pointer cannot be popped through to a
 		// mut method on V 0.5.2; bind it through a mutable local instead.
@@ -967,6 +996,7 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 	}
 
 	fn on_frame(mut app GgApp) {
+		mut frame_start_ticks := time.ticks()
 		if app.scheduler.is_closed() || app.ctx == unsafe { nil } || app.draining_tasks {
 			return
 		}
@@ -980,6 +1010,7 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 		// Callbacks run outside the coordinator lock, on this UI thread. Business
 		// messages may run while minimized, but visual work stays suspended.
 		app.draining_tasks = true
+		mut drain_start_ticks := time.ticks()
 		for task in app.scheduler.take_tasks() {
 			if app.scheduler.is_closed() {
 				break
@@ -987,7 +1018,9 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 			task()
 		}
 		app.draining_tasks = false
+		eprintln('[on_frame][phase:drain_tasks] ${time.ticks() - drain_start_ticks} ms')
 		mut ctx := app.ctx
+		mut ctx_update_start_ticks := time.ticks()
 		live_size := ctx.window_size()
 		if live_size.width > 0 && live_size.height > 0
 			&& (ctx.width != live_size.width || ctx.height != live_size.height) {
@@ -1002,9 +1035,12 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 			app.dpi_scale = dpi
 			app.scheduler.invalidate(.surface)
 		}
+		eprintln('[on_frame][phase:ctx_update] ${time.ticks() - ctx_update_start_ticks} ms')
+		mut scheduler_start_ticks := time.ticks()
 		now := renderer_now_ms()
 		work := app.scheduler.begin_frame(now) or { return }
 		defer { app.scheduler.finish_frame(work) }
+		eprintln('[on_frame][phase:scheduler_begin] ${time.ticks() - scheduler_start_ticks} ms')
 		ensure_symbol_fallbacks(ctx)
 		// Manual mode suppresses the frame callback between asks, so a pending
 		// visual deadline needs its own wake: schedule one one-shot timer that
@@ -1023,6 +1059,7 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 			// has, such as ⌘, was cached as the width of an empty box.
 			configure_text_measurer(custom_measure_text_width)
 		}
+		mut build_start_ticks := time.ticks()
 		if work.build && voidptr(g_build_screen) != unsafe { nil } {
 			app.scheduler.record_build()
 			declared := g_build_screen()
@@ -1033,16 +1070,17 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 			app.declared_root = declared
 			app.has_root = true
 		}
+		eprintln('[on_frame][phase:build_layout] ${time.ticks() - build_start_ticks} ms')
 		if app.scheduler.is_closed() || app.iconified || app.suspended {
 			return
 		}
+		mut prepare_start_ticks := time.ticks()
+		// The animation pass returns the tree the build just validated with
+		// animation properties merged in: it keeps every id, key and child, so
+		// revalidating the result would rescan the tree for no new information.
 		root := apply_custom_widget_animations(app.declared_root)
 		// Animation callbacks are user code and may close or suspend the window.
 		if app.scheduler.is_closed() || app.iconified || app.suspended {
-			return
-		}
-		validate_element_tree(root) or {
-			eprintln('ui2: ${err}')
 			return
 		}
 		g_hit_targets.clear()
@@ -1067,6 +1105,8 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 		}
 		sync_gl_surface_textures()
 		g_opengl_surface_frames = map[string]Rect{}
+		eprintln('[on_frame][phase:prepare] ${time.ticks() - prepare_start_ticks} ms')
+		mut render_start_ticks := time.ticks()
 		ctx.begin()
 		if app.has_root {
 			g_dropdown_popup.mounted = false
@@ -1094,6 +1134,8 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 			ctx.ft.flush()
 		}
 		ctx.end()
+		eprintln('[on_frame][phase:render_pass] ${time.ticks() - render_start_ticks} ms')
+		mut post_render_start_ticks := time.ticks()
 		app.scheduler.record_draw()
 		if g_present_on_demand {
 			// Idle callbacks present nothing, so the keep-alive measures idle time from the
@@ -1103,6 +1145,8 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 		}
 		app.scheduler.set_deadline(custom_visual_deadline())
 		app.scheduler.set_animation_active(custom_animations_need_frame(app.declared_root))
+		eprintln('[on_frame][phase:post_render] ${time.ticks() - post_render_start_ticks} ms')
+		eprintln('[on_frame][phase:total_frame] ${time.ticks() - frame_start_ticks} ms')
 	}
 
 	fn on_event(e &gg.Event, app &GgApp) {
