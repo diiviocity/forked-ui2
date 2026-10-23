@@ -14,7 +14,10 @@ import os
 // mesa_only probes the Mesa vendor only, for VMs, CI and Xvfb, where a
 // proprietary vendor would only be mapped and never used. gpu_only probes the
 // proprietary vendor only, so on a NVIDIA desktop the Mesa/LLVM libraries
-// never load; it needs a real hardware GL context and fails under Xvfb.
+// never load; it needs a real hardware GL context. Every pin is probed before
+// it is applied, so on machines whose display the pinned vendor cannot serve,
+// such as Intel-driven X screens for gpu_only, the pin is dropped and glvnd
+// probes as usual instead of killing the window at startup.
 pub enum GlLoad {
 	auto
 	mesa_only
@@ -96,7 +99,11 @@ pub fn pick_egl_vendor_json(dirs []string, want_mesa bool) ?string {
 // __EGL_VENDOR_LIBRARY_FILENAMES or __EGL_VENDOR_LIBRARY_DIRS wins over both:
 // whoever set those on the process knows their machine better than the flag
 // does. When no manifest matches, the setting is left untouched, which
-// degenerates to .auto.
+// degenerates to .auto. A matched manifest is probed before it is pinned: on
+// a machine whose display the pinned vendor cannot serve, a blind pin leaves
+// sokol initializing EGL with no working vendor at all, which kills the
+// window at startup, so a failed probe leaves glvnd's probe-every-vendor
+// behavior in place instead.
 pub fn configure_gl_libraries(load GlLoad) {
 	if os.user_os() != 'linux' {
 		return
@@ -118,5 +125,54 @@ pub fn configure_gl_libraries(load GlLoad) {
 	json := pick_egl_vendor_json(egl_vendor_dirs, mode == .mesa_only) or {
 		return
 	}
+	if !egl_vendor_initializes(json) {
+		eprintln('ui2: GL vendor pin ${json} cannot initialize the display; keeping glvnd vendor probing')
+		return
+	}
 	os.setenv('__EGL_VENDOR_LIBRARY_FILENAMES', json, true)
 }
+
+// egl_vendor_initializes reports whether EGL can create and initialize the
+// default display with manifest pinned. The probe forks: glvnd reads the
+// vendor list once per process, so a failed pin inside this process could not
+// be undone by unsetting the environment, and a vendor that crashes while
+// initializing would take the window down with it. The child dies with the
+// verdict and never reaches the window.
+fn egl_vendor_initializes(manifest string) bool {
+	pid := C.fork()
+	if pid < 0 {
+		return true // cannot fork: keep the pin, the flag is only a hint
+	}
+	if pid == 0 {
+		// Child: probe the pinned vendor and die with the verdict.
+		os.setenv('__EGL_VENDOR_LIBRARY_FILENAMES', manifest, true)
+		dpy := C.eglGetDisplay(voidptr(0)) // EGL_DEFAULT_DISPLAY
+		if dpy == 0 {
+			C._exit(1)
+		}
+		mut major := i32(0)
+		mut minor := i32(0)
+		if C.eglInitialize(voidptr(dpy), &major, &minor) != 1 {
+			C._exit(1)
+		}
+		C.eglTerminate(voidptr(dpy))
+		C._exit(0)
+	}
+	mut status := i32(0)
+	C.wait(&status)
+	return (status & 0x7f) == 0 && ((status >> 8) & 0xff) == 0
+}
+
+fn C.fork() i32
+
+fn C.wait(status &i32) i32
+
+type EGLDisplay = voidptr
+
+fn C.eglGetDisplay(native_display voidptr) EGLDisplay
+
+fn C.eglInitialize(display voidptr, major &i32, minor &i32) int
+
+fn C.eglTerminate(display voidptr) int
+
+fn C._exit(status i32)
