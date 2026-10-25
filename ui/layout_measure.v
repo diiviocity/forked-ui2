@@ -122,7 +122,7 @@ pub fn measure_layout_element(element Element, constraints LayoutConstraints, me
 		} else {
 			element.text
 		}
-		measured := $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2_headless ? {
+		measured := $if (android || linux || freebsd || ((macos || windows) && ui2_custom_rendering ?)) && !ui2_headless ? {
 			// Editors wrap every row, unlike labels with a declared line limit.
 			// Keep external callbacks' original TextStyle contract unchanged.
 			if element.kind == .text_area && voidptr(measure) == voidptr(measure_layout_text) {
@@ -168,7 +168,7 @@ fn layout_measure_control_insets(element Element) LayoutPadding {
 			return LayoutPadding{ left: 2, right: 2 }
 		}
 	}
-	$if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2_headless ? {
+	$if (android || linux || freebsd || ((macos || windows) && ui2_custom_rendering ?)) && !ui2_headless ? {
 		if element.kind == .text_area {
 			// Include the gutter reserved by text_area_content_rect even when no
 			// scrollbar is visible, so measurement and drawing wrap identically.

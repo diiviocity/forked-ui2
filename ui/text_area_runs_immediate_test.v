@@ -10,7 +10,7 @@ fn test_rich_text_area_keeps_its_runs() {
 	assert el.text_runs.len == 1
 }
 
-$if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2_headless ? {
+$if (android || linux || freebsd || ((macos || windows) && ui2_custom_rendering ?)) && !ui2_headless ? {
 	fn test_text_area_run_spans_follow_the_runes_of_the_text() {
 		red := TextStyle{ color: 0xff0000 }
 		blue := TextStyle{ color: 0x0000ff }
