@@ -101,5 +101,10 @@ fn main() {
 	ui2.set_gl_surface_renderer(fn [mut surface] (id string, frame ui2.Rect, scale f64, height f64) {
 		surface.draw(id, frame, scale, height)
 	})
-	ui2.run_window('OpenGL Surface', 400, 500, build, fn (_ string) {})
+	ui2.run_window_with_options(ui2.WindowOptions{
+		title: 'OpenGL Surface'
+		width: 400
+		height: 500
+		refresh: .continuous
+	}, build, fn (_ string) {})
 }
