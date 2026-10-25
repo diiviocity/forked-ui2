@@ -722,10 +722,17 @@ fn animations_need_frames(now i64) bool {
 	return active
 }
 
-// Animation timestamps share a monotonic clock across starts, presentation
-// callbacks and the native driver. Wall-clock changes must not jump a tween.
+// Animation timestamps share the wall clock with `after()` timer deadlines and
+// the tests that drive both. The cost of sharing is that NTP corrections or a
+// manual clock change jump tweens; the `after()` pass would misfire far worse
+// on a split clock.
 fn animation_now_ms() i64 {
-	return i64(time.sys_mono_now() / u64(time.millisecond))
+	// Animation stamps, timer deadlines and the tests that drive both share
+	// time.ticks(): wall-clock milliseconds. A monotonic clock here would
+	// split `after()` deadlines (stamped with ticks) from the animation pass
+	// that fires them, and leave every test that injects ticks-based times
+	// driving animations stamped with a different clock.
+	return time.ticks()
 }
 
 // The custom renderer schedules at its presentation cadence, without a second
@@ -777,7 +784,12 @@ fn apply_widget_animations_for_visibility(root Element, now i64, visible_only bo
 	mut runtime := g_animation_runtime
 	mut pending := []PendingAnimationEvent{}
 	runtime.mutex.lock()
-	result := apply_widget_animation_node(root, now, visible_only, mut pending)
+	// Custom-rendered text resolves lines: 0 when it draws (text_line_budget), so with no
+	// animation running the tree passes through unchanged instead of being copied.
+	mut result := root
+	if !(visible_only && runtime.runs.len == 0) {
+		result, _ = apply_widget_animation_node(root, now, visible_only, mut pending)
+	}
 	runtime.mutex.unlock()
 	dispatch_animation_events(pending)
 	// `after` callbacks run at the same point as animation callbacks; what they
@@ -788,29 +800,58 @@ fn apply_widget_animations_for_visibility(root Element, now i64, visible_only bo
 	return result
 }
 
-fn apply_widget_animation_node(declared Element, now i64, visible_only bool, mut pending []PendingAnimationEvent) Element {
+fn apply_widget_animation_node(declared Element, now i64, visible_only bool, mut pending []PendingAnimationEvent) (Element, bool) {
 	// Hidden custom subtrees retain their animation timeline without evaluating
 	// it. Otherwise progress callbacks could repeatedly invalidate the model and
 	// keep an invisible repeating animation drawing despite zero frame demand.
 	if visible_only && declared.hidden {
-		return declared
+		return declared, false
 	}
 	mut runtime := g_animation_runtime
-	mut children := []Element{cap: declared.children.len}
-	for child in declared.children {
-		children << apply_widget_animation_node(child, now, visible_only, mut pending)
+	// Copy on write: the pass must visit every node, because an untouched
+	// subtree can hold the one animating element, but a node with no animation
+	// run of its own, no line budget to resolve and no changed child is passed
+	// through as the declared value. Only the nodes an animation actually
+	// touches are then cloned per frame.
+	mut changed := false
+	mut children := []Element{}
+	for index, child in declared.children {
+		processed, child_changed := apply_widget_animation_node(child, now, visible_only, mut pending)
+		if child_changed && !changed {
+			changed = true
+			children = []Element{cap: declared.children.len}
+			// Children before the first changed one came back equal to their
+			// declared form, so the declared references stand in for them.
+			for previous_index in 0 .. index {
+				children << declared.children[previous_index]
+			}
+		}
+		if changed {
+			children << processed
+		}
+	}
+	if declared.id.len > 0 && declared.id in runtime.runs {
+		changed = true
+	}
+	if !changed && declared.text_style.lines > 0 {
+		return declared, false
 	}
 	// Every backend renders what this pass returns, so `lines: 0` ("as many lines
 	// as fit") is resolved here once instead of in each backend's text code.
+	if children.len == 0 {
+		// Nothing below this node changed, so the declared children are the
+		// processed children.
+		children = declared.children
+	}
 	mut result := Element{
 		...declared
 		children:   children
 		text_style: text_style_with_line_budget(declared.text_style)
 	}
 	if declared.id.len == 0 {
-		return result
+		return result, true
 	}
-	mut animation_run := runtime.runs[declared.id] or { return result }
+	mut animation_run := runtime.runs[declared.id] or { return result, true }
 	previous_progress := animation_run.progress
 	if !animation_run.initialized {
 		animation_run.initialized = true
@@ -884,13 +925,13 @@ fn apply_widget_animation_node(declared Element, now i64, visible_only bool, mut
 		}
 		animation_run.last = result
 		runtime.runs[declared.id] = animation_run
-		return result
+		return result, true
 	}
 	if animation_run.initialized {
 		result = merge_animation_properties(result, animation_run.last, animation_run.retained)
 	}
 	runtime.runs[declared.id] = animation_run
-	return result
+	return result, true
 }
 
 fn dispatch_animation_events(pending []PendingAnimationEvent) {
@@ -1393,6 +1434,12 @@ fn reset_widget_animations() {
 // text_lines_unlimited is the line budget `lines: 0` stands for: more than any
 // frame shows, so text wraps until it runs out or the frame cuts it off.
 const text_lines_unlimited = 10000
+
+// text_line_budget is how many lines a text element draws: lines: 0 means as many as
+// fit, so the budget is unlimited.
+fn text_line_budget(style TextStyle) int {
+	return if style.lines > 0 { style.lines } else { text_lines_unlimited }
+}
 
 fn text_style_with_line_budget(style TextStyle) TextStyle {
 	if style.lines > 0 {

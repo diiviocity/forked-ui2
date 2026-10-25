@@ -186,10 +186,6 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 	__global g_outline_outer = []f64{}
 	__global g_outline_inner = []f64{}
 	__global g_present_on_demand = false
-	// g_frame_running is true while on_frame builds and draws the window.
-	// menu_default reads it so a menu bar set during the frame does not ask
-	// for another one.
-	__global g_frame_running = false
 	__global g_text_values = map[string]string{}
 	__global g_text_props = map[string]string{}
 	__global g_text_editors = map[string]TextEditor{}
@@ -676,6 +672,27 @@ $if (android || linux || ((macos || windows) && ui2_custom_rendering ?)) && !ui2
 	// slider, including a value changed by pointer input before the next build.
 	pub fn slider_value(id string) f64 {
 		return g_slider_values[id] or { 0 }
+	}
+
+	// slider_live_value merges a slider's freshly declared value with the live
+	// state a previous build or an input gesture left behind. When the pointer
+	// holds the slider, the gesture's value wins: the tree was built from
+	// playback state that races the finger, and adopting the declaration would
+	// snap the thumb back under it. When nothing holds it, a declared change
+	// wins over a stale live value, and otherwise the live value is kept so
+	// external writes survive between rebuilds.
+	fn slider_live_value(id string, declared f64, spec SliderSpec) f64 {
+		mut previous_value := g_slider_values[id] or { declared }
+		if id == g_touch.slider_drag_id {
+			return previous_value
+		}
+		previous_declared := g_slider_declared[id] or { declared }
+		if id !in g_slider_values || (previous_declared != declared && previous_value != declared) {
+			previous_value = declared
+		}
+		current := slider_clamped_value(previous_value, spec.min, spec.max)
+		g_slider_values[id] = current
+		return current
 	}
 
 	pub fn set_slider_value(id string, value f64) {

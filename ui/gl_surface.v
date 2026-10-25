@@ -20,6 +20,14 @@ pub:
 
 __global g_gl_surface_renderer = GlSurfaceFn(unsafe { nil })
 __global g_gl_surface_requests = map[string]GlTextureRequest{}
+// g_frame_running is true while ui2's on_frame is building and drawing the
+// window. request_refresh below reads it so a producer inside the surface
+// renderer does not schedule a second frame, and menu_default reads it so a
+// menu bar set during the frame does not ask for another one. Declared here,
+// outside the guarded platform block of ui_immediate.c.v, because its readers
+// compile on every platform while its writer (on_frame) exists only in the
+// guarded block.
+__global g_frame_running = false
 
 // set_gl_surface_renderer installs the function that renders into each `opengl`
 // element. It runs before every frame, on the UI thread, with the GL context current,
@@ -43,10 +51,17 @@ pub fn set_gl_surface_texture(id string, gl_texture u32, width int, height int) 
 		width:      width
 		height:     height
 	}
-	// The producer usually runs on its own thread, so without this ask the new
-	// texture would wait for unrelated work: on GL/D3D the loop re-presents the
-	// retained tree each vsync and would pick it up anyway, but on Metal an
-	// idle window draws nothing and the update would never reach the screen.
-	// The scheduler's queue is mutex guarded, so this is safe off the UI thread.
+	// A producer that runs outside the frame — its render thread handed the
+	// texture over through another channel, or native backends let the
+	// application call here between frames — needs this ask: without it, on
+	// Metal an idle window draws nothing and the update would never reach the
+	// screen. A producer inside the surface renderer runs in the frame ui2 is
+	// already building, whose sync consumes the request; an ask there
+	// schedules a second frame with nothing new to show, which loops for as
+	// long as the surface is handed over every frame. The scheduler's queue is
+	// mutex guarded, so this is safe off the UI thread.
+	if g_frame_running {
+		return
+	}
 	request_refresh()
 }

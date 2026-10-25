@@ -65,6 +65,16 @@ explicit asks. See
 [render scheduling](docs/render-scheduling.md) for invalidation, worker
 delivery, window lifecycle and the acceptance fixture.
 
+On Linux, glvnd probes the ICD of every installed GL vendor before the first
+frame, mapping each vendor's whole userspace stack into the process — tens of
+megabytes per vendor, even when only one of them renders.
+`ui2.WindowOptions{gl_load: .mesa_only}` probes the Mesa vendor only (VMs, CI,
+Xvfb), `gl_load: .gpu_only` probes the proprietary vendor only (NVIDIA
+desktops; it needs a real hardware GL context). The `UI2_GL_VENDOR`
+environment variable overrides the field without a recompile, and an explicit
+`__EGL_VENDOR_LIBRARY_FILENAMES` or `__EGL_VENDOR_LIBRARY_DIRS` in the
+process wins over both.
+
 ## Widget animations
 
 Animations target a mounted element by `id` and are applied after each
