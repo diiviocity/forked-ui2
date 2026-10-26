@@ -7,11 +7,11 @@
 
 
 `ui2` is a compact declarative UI module for V. It uses retained native controls
-on macOS, iOS, and Windows and a custom immediate-mode `gg` renderer on Linux
-and Android.
+on macOS, iOS, and Windows and a custom immediate-mode `gg` renderer on Linux,
+the BSDs, and Android.
 
-The Linux backend draws and handles widgets directly through `gg`/Sokol; it has
-no GTK dependency.
+The Linux and BSD backends draw and handle widgets directly through
+`gg`/Sokol; they have no GTK dependency.
 
 The V API includes responsive Flex and Grid placement with intrinsic text
 measurement. See the [layout guide](docs/modern-layout.md) and
@@ -35,6 +35,11 @@ v -d ui2_custom_rendering run examples/users/main.v
 `ui2` needs V 0.5.2 or newer. The module is split across `ui/`, `appkit/`,
 `uikit/`, `windows/`, and `linux/` through the `subdirs` field of `v.mod`, and
 older compilers ignore that field. Run `v up` if `import ui2` fails.
+
+FreeBSD, OpenBSD, NetBSD, and DragonFlyBSD share the custom `gg` renderer with
+Linux, drawing through X11: the X11 client libraries (`libX11`, `libXcursor`,
+`libXi`, `libXrandr`) and OpenGL have to be installed, and stock V's sokol
+module already supplies each BSD's include and library paths.
 
 To use `ui2` from a project outside this repository, link the clone into
 `~/.vmodules`:
@@ -544,11 +549,11 @@ do not show CoreAnimation shadows, which `cacheDisplayInRect:` does not render.
 
 Call `control_support(kind)` to query support. macOS implements every shared
 control kind. iOS implements every kind, with text areas reported as `partial`
-because rich runs are currently rendered as plain text. Linux, Android, and
-opt-in custom desktop builds implement every kind through custom rendering;
-dropdowns and text areas are `partial` because the dropdown list is drawn by
-the renderer instead of a native menu and rich text-area runs are rendered as
-plain text.
+because rich runs are currently rendered as plain text. Linux, the BSDs,
+Android, and opt-in custom desktop builds implement every kind through custom
+rendering; dropdowns and text areas are `partial` because the dropdown list is
+drawn by the renderer instead of a native menu and rich text-area runs are
+rendered as plain text.
 
 A button marked `native` asks the platform for the standard bezel and hands it
 the interaction styling. AppKit and Win32 supply theirs; the custom renderer
@@ -628,10 +633,10 @@ choice := ui2.message_box(
 
 `title` is the short heading and `text` the body. macOS renders them as an
 `NSAlert` message and informative text, Windows as a `MessageBoxW` caption and
-body, and Linux as the desktop's own `zenity` or `kdialog` dialog — `kdialog`
-first under KDE and Plasma. iOS presents a `UIAlertController` and pumps the run
-loop so the call stays synchronous like the desktop backends. `alert(title,
-text)` and `confirm(title, text)` wrap the two common cases.
+body, and the Linux and BSD desktops as their own `zenity` or `kdialog` dialog
+— `kdialog` first under KDE and Plasma. iOS presents a `UIAlertController` and
+pumps the run loop so the call stays synchronous like the desktop backends.
+`alert(title, text)` and `confirm(title, text)` wrap the two common cases.
 
 Android has no alert this layer can drive without a JVM callback, so
 `message_box_supported()` returns `false` there and `message_box` answers as if
@@ -684,8 +689,8 @@ fn on_event(event string) {
 `start_window_drag` only works while a press is being handled, so give the
 title bar `clickable: true` (or `draggable`) and call it on `pointer:down`.
 `window_is_maximized` tells a maximize button which icon to show. These work
-for native and custom-rendered windows on macOS and Windows; Linux, Android and
-iOS keep their own frame and the calls report false.
+for native and custom-rendered windows on macOS and Windows; Linux, the BSDs,
+Android and iOS keep their own frame and the calls report false.
 
 The window does not exist until `run_window` starts, so hide the title bar
 from a zero-second timer set up before it; the timer runs during the first
@@ -736,9 +741,9 @@ pasted := ui2.clipboard_text() or { '' }
 ```
 
 macOS uses `NSPasteboard`, iOS `UIPasteboard` and Windows the Win32 clipboard,
-for native and custom-rendered windows alike. Linux drives `wl-copy`/`wl-paste`
-under Wayland, or `xclip` or `xsel` under X11, so one of them has to be
-installed; Android has no clipboard this layer can reach. Check
+for native and custom-rendered windows alike. Linux and the BSDs drive
+`wl-copy`/`wl-paste` under Wayland, or `xclip` or `xsel` under X11, so one of
+them has to be installed; Android has no clipboard this layer can reach. Check
 `clipboard_supported()` before offering a copy action.
 
 ## File and folder dialogs
@@ -773,13 +778,14 @@ destination := ui2.save_file_dialog(
 
 The API uses `NSOpenPanel`/`NSSavePanel` on macOS, standard Win32 open/save
 and folder dialogs on Windows, and the desktop's `zenity` or `kdialog` picker
-on Linux. Linux requires a graphical session and one of those helpers;
-`file_dialog_supported()` reports that availability. The synchronous API is not
+on Linux and the BSDs. Those desktops require a graphical session and one of
+those helpers; `file_dialog_supported()` reports that availability. The
+synchronous API is not
 available on iOS or Android, where a document picker needs an app-specific
 asynchronous presentation callback.
 
-For Linux and custom-rendered applications, `FilePicker` provides an in-window
-picker with no `zenity` or `kdialog` dependency. It uses the same
+For Linux, the BSDs, and custom-rendered applications, `FilePicker` provides
+an in-window picker with no `zenity` or `kdialog` dependency. It uses the same
 `FileDialogConfig` for open, save, and folder modes. Keep the picker in app
 state, add `picker.render(ui2.bounds())` as the last screen child, and forward
 events to `picker.handle`. The picker is asynchronous: `done` becomes true when
@@ -844,10 +850,11 @@ ui2.set_tray(
 ```
 
 A shortcut names the platform's primary modifier as `cmd`: Command on macOS,
-Control on Windows and Linux. A row's `checked` state is declared rather than
-remembered — after handling the event, install the menu again with the new
-value. Either call may come before `run_window`; what was declared is installed
-as soon as there is a window to attach it to. `remove_tray()` undocks the icon.
+Control on Windows, Linux, and the BSDs. A row's `checked` state is declared
+rather than remembered — after handling the event, install the menu again with
+the new value. Either call may come before `run_window`; what was declared is
+installed as soon as there is a window to attach it to. `remove_tray()` undocks
+the icon.
 
 macOS builds an `NSMenu` main menu, keeping its own application menu with
 "Quit <app>" first, and an `NSStatusItem` for the tray, whose `icon` may name an
@@ -943,11 +950,11 @@ these functions.
 
 ## Fonts and text sizes
 
-`TextStyle.size` is in points. Win32 and the Linux desktops resolve a point at
-96 dpi, AppKit and UIKit at 72, so the custom renderer follows whichever
-platform it draws on and a declared size matches the native controls beside it.
-The default size of 15 is therefore a 20 px em square on Linux and Windows, and
-15 px on macOS and iOS.
+`TextStyle.size` is in points. Win32 and the Linux and BSD desktops resolve a
+point at 96 dpi, AppKit and UIKit at 72, so the custom renderer follows
+whichever platform it draws on and a declared size matches the native controls
+beside it. The default size of 15 is therefore a 20 px em square on Linux, the
+BSDs, and Windows, and 15 px on macOS and iOS.
 
 The custom renderer draws through fontstash, which sizes a glyph by its
 ascender-to-descender height rather than by the em square. `ui2` reads
@@ -1153,9 +1160,10 @@ native backends do not yet.
 
 `opengl(id, frame)` reserves a rectangle for content an application renders with
 OpenGL, such as a video frame. The gg renderer draws it where the graphics backend
-is OpenGL — Linux and Android. Custom-rendered desktop builds render through Metal
-(macOS) or D3D11 (Windows), which have no GL texture to wrap, so a texture handed
-over there draws as an empty quad; native backends show it as a transparent view.
+is OpenGL — Linux, the BSDs, and Android. Custom-rendered desktop builds render
+through Metal (macOS) or D3D11 (Windows), which have no GL texture to wrap, so a
+texture handed over there draws as an empty quad; native backends show it as a
+transparent view.
 
 `set_gl_surface_renderer` installs a function that runs before every frame, on the
 UI thread with the GL context current, once for each `opengl` element drawn in the
@@ -1427,7 +1435,8 @@ needs no screen recording permission and captures the window alone. The
 recorder reads the presented framebuffer back, which only the GL backend
 implements, so the script builds macOS examples against GL instead of Metal.
 Text is a third wider at 96 dpi than it is on macOS, so a layout that only just
-fits in a macOS screenshot still has to be checked on Linux or Windows.
+fits in a macOS screenshot still has to be checked on Linux, the BSDs, or
+Windows.
 
 The Windows backend also has an executable Wine smoke test. It creates every
 native widget kind, reads text back from the Win32 controls, verifies text-area

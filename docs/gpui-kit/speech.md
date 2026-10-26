@@ -14,7 +14,7 @@ Files:
 | `ui/component_speech_script.v` | `ScriptedSpeechRecognizer` and `speech_script`, for demos and tests |
 | `ui/speech.v` | `SystemSpeechRecognizer`, the platform recognizer, in V |
 | `ui/speech_darwin.v`, `ui/speech_darwin.h` | The macOS bridge to `SFSpeechRecognizer` (plain C through the Objective-C runtime) |
-| `ui/speech_default.c.v`, `ui/speech_windows.c.v`, `ui/speech_ios.v` | Linux/Android, Windows and iOS: no system recognizer, with the reason |
+| `ui/speech_default.c.v`, `ui/speech_windows.c.v`, `ui/speech_ios.v` | Linux, the BSDs, Android, Windows and iOS: no system recognizer, with the reason |
 
 Parts are adapted from GPUI Kit under Apache-2.0 (see the file headers):
 the session lifecycle and the level meter of `speech/state.rs` and
@@ -223,7 +223,7 @@ complete, small implementation.
 | --- | --- |
 | macOS (AppKit and custom renderer) | `SFSpeechRecognizer`, on the device only (`requiresOnDeviceRecognition`), punctuation on (macOS 13+), the default microphone through an AudioQueue at 16 kHz mono |
 | Windows | Unsupported: the button hides unless `show_when_unsupported` |
-| Linux, Android | Unsupported: there is no platform dictation service |
+| Linux, the BSDs, Android | Unsupported: there is no platform dictation service |
 | iOS | Unsupported for now |
 
 ### macOS
@@ -286,7 +286,7 @@ normally, as upstream.
   the record category, activated before and deactivated after, and the iOS
   backend cannot be built or run here, so it stays off rather than shipping
   untested capture code.
-- **Linux, Android**: no system service; use an application recognizer and
+- **Linux, the BSDs, Android**: no system service; use an application recognizer and
   `session.push_audio`.
 
 ## Implemented and omitted

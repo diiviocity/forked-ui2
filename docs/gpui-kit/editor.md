@@ -208,7 +208,7 @@ Components cannot capture keys. `code_command_for_key(event)` maps an
 `on_key_event` key to a command, with Command on Apple platforms where others
 use Control:
 
-| Command | macOS | Windows / Linux |
+| Command | macOS | Windows / Linux / BSDs |
 | --- | --- | --- |
 | `newline`, `indent`, `outdent`, `backspace` | Return, Tab / ⌘], ⇧Tab / ⌘[, Backspace | Enter, Tab / Ctrl+], Shift+Tab / Ctrl+[, Backspace |
 | `toggle_comment` | ⌘/ | Ctrl+/ |

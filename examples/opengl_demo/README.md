@@ -14,7 +14,8 @@ Two things the renderer has to mind for:
   back — this demo binds a framebuffer and textures — must be handed back with
   `gfx.reset_state_cache()` before returning, or sokol may keep using stale
   bindings and draw the UI with them.
-- The GL texture wrap is a feature of sokol's OpenGL backends (Linux, Android).
+- The GL texture wrap is a feature of sokol's OpenGL backends (Linux, the
+  BSDs, Android).
   Custom-rendered desktop builds run Metal or D3D11, which have no GL texture to
   wrap, so the texture draws as an empty quad there.
 

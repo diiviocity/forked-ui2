@@ -206,7 +206,7 @@ mut:
 }
 
 const app = &App{}
-const clipboard_ok = ui2.clipboard_supported() // Cache it: on Linux it searches PATH.
+const clipboard_ok = ui2.clipboard_supported() // Cache it: on Linux and the BSDs it searches PATH.
 
 fn build() ui2.Element {
 	state := unsafe { app }

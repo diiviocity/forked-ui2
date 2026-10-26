@@ -213,7 +213,7 @@ bar is `role: status` with `label` (default "Status").
 until `run_window` starts. Schedule it from `main` with a zero-second timer: it
 runs at the start of the first build, after the window is made, and the build
 it asks for lays the window out again at its new size. Keep the result —
-Linux, Android and iOS keep their frame and report false:
+Linux, the BSDs, Android and iOS keep their frame and report false:
 
 ```v
 fn main() {
@@ -341,7 +341,7 @@ and search fields (`input_group`) go in custom items; the example hosts an
   `minimize_window`/`toggle_maximize_window`/`quit`; Windows' own caption
   buttons, snap layouts on the maximize button and the system menu are not
   involved.
-- Linux, Android, iOS: the platform keeps its frame (`set_window_chrome`
+- Linux, the BSDs, Android, iOS: the platform keeps its frame (`set_window_chrome`
   reports false), so `title_bar_window(false)` gives a plain bar.
 
 ## Accessibility
@@ -399,7 +399,7 @@ keeps the view's own role there.
 | `on_close_window` | The close event: the app calls `ui2.quit()` or does something else |
 | Default gradient background, bottom border | Implemented |
 | Right click shows the window menu (Linux) | Omitted: ui2 reports no mouse button and has no window-menu API |
-| Server-side decorations detection (Linux) | Not applicable: ui2's Linux window keeps its frame |
+| Server-side decorations detection (Linux) | Not applicable: ui2's Linux and BSD windows keep their frame |
 | `pl_3` in full screen | Omitted: ui2 cannot tell full screen apart |
 | `WindowControlArea` hit testing (Windows snap layouts) | Omitted: ui2 has no non-client hit-test hook |
 | `window_border` (client-side shadow and resize edges) | Omitted: ui2's windows keep their native border |

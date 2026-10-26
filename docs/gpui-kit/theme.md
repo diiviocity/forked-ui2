@@ -233,7 +233,7 @@ unknown); `component_theme_mode_is_dark(mode, appearance)` is the pure rule.
 | macOS (AppKit and custom renderer) | `AppleInterfaceStyle` in the global defaults: "Dark" while dark, also when switching automatically |
 | iOS | `UITraitCollection.currentTraitCollection.userInterfaceStyle` (iOS 13+) |
 | Windows | `AppsUseLightTheme` under `HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize` |
-| Linux | Only a `GTK_THEME` ending in `:dark` or `-dark`; otherwise unknown. The desktop color scheme lives in the XDG settings portal (`org.freedesktop.appearance`, D-Bus), which ui2 does not speak. |
+| Linux and the BSDs | Only a `GTK_THEME` ending in `:dark` or `-dark`; otherwise unknown. The desktop color scheme lives in the XDG settings portal (`org.freedesktop.appearance`, D-Bus), which ui2 does not speak. |
 | Android | Unknown |
 
 No backend reports appearance changes, so an application following the
