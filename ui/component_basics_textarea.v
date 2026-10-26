@@ -76,7 +76,7 @@ fn textarea_padding(size ComponentSize) (f64, f64) {
 // Elsewhere the text area is clear and sits inset in a box drawn beneath it,
 // with the placeholder showing through.
 fn textarea_painted() bool {
-	$if android || linux || ui2_custom_rendering ? {
+	$if android || linux || freebsd || openbsd || netbsd || dragonfly || ui2_custom_rendering ? {
 		return true
 	} $else {
 		return false

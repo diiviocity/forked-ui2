@@ -314,7 +314,7 @@ fn tv_display(s string) string {
 fn tv_baseline_ratio(mono bool) f64 {
 	$if ui2_custom_rendering ? {
 		return if mono { 0.388 } else { 0.342 }
-	} $else $if linux || android {
+	} $else $if linux || freebsd || openbsd || netbsd || dragonfly || android {
 		return if mono { 0.388 } else { 0.342 }
 	} $else $if macos || ios {
 		return if mono { 0.347 } else { 0.378 }
@@ -329,7 +329,7 @@ fn tv_baseline_ratio(mono bool) f64 {
 fn tv_snap(v f64) f64 {
 	$if ui2_custom_rendering ? {
 		return math.round(v)
-	} $else $if linux || android {
+	} $else $if linux || freebsd || openbsd || netbsd || dragonfly || android {
 		return math.round(v)
 	} $else {
 		return v

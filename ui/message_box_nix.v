@@ -1,7 +1,6 @@
-// Linux has no single system alert API. The desktop portals that ship with
-// GNOME (zenity) and KDE (kdialog) are the dialogs those environments draw for
-// their own apps, so driving them keeps the alert native without linking the
-// whole of GTK or Qt into every ui2 binary.
+// The X11 desktops have no single system alert API. zenity and kdialog — the
+// dialogs GNOME and KDE draw for their own apps, on Linux and the BSDs alike —
+// are driven instead, which keeps every ui2 binary free of whole GTK or Qt.
 module ui2
 
 import os

@@ -23,10 +23,10 @@ pub:
 // ── Point sizes ────────────────────────────────────────────────────
 
 // font_pixels_per_point resolves a point the way the platform's own toolkit
-// does. Win32 and the Linux desktops render type at 96 dpi, AppKit and UIKit
-// at 72, so a declared size lines up with the native controls beside it.
+// does. Win32 and the Linux and BSD desktops render type at 96 dpi, AppKit and
+// UIKit at 72, so a declared size lines up with the native controls beside it.
 fn font_pixels_per_point() f64 {
-	$if linux || windows {
+	$if linux || freebsd || openbsd || netbsd || dragonfly || windows {
 		return 96.0 / 72.0
 	} $else {
 		return 1.0
@@ -350,8 +350,8 @@ fn font_system_dirs() []string {
 	home := os.home_dir()
 	$if android {
 		return ['/system/fonts', '/data/fonts']
-	} $else $if linux {
-		return [
+	} $else $if linux || freebsd || openbsd || netbsd || dragonfly {
+		mut dirs := [
 			os.join_path(home, '.local', 'share', 'fonts'),
 			os.join_path(home, '.fonts'),
 			'/usr/local/share/fonts',
@@ -359,6 +359,19 @@ fn font_system_dirs() []string {
 			// The host's fonts as a Flatpak sandbox sees them.
 			'/run/host/fonts',
 		]
+		$if openbsd {
+			// Xenocara's own trees, where the base system's faces live; the
+			// packages' fonts land in /usr/local/share/fonts above.
+			dirs << '/usr/X11R6/lib/X11/fonts'
+		}
+		$if netbsd {
+			// The base system's X11R7 tree, and both of pkgsrc's font
+			// layouts; font_index skips the ones not present.
+			dirs << '/usr/X11R7/lib/X11/fonts'
+			dirs << '/usr/pkg/share/fonts'
+			dirs << '/usr/pkg/lib/X11/fonts'
+		}
+		return dirs
 	} $else $if macos {
 		return [os.join_path(home, 'Library', 'Fonts'), '/Library/Fonts', '/System/Library/Fonts']
 	} $else $if windows {

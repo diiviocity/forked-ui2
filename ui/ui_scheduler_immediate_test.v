@@ -2,7 +2,7 @@
 @[has_globals]
 module ui2
 
-$if (android || linux || freebsd || ((macos || windows) && ui2_custom_rendering ?)) && !ui2_headless ? {
+$if (android || linux || freebsd || openbsd || netbsd || dragonfly || ((macos || windows) && ui2_custom_rendering ?)) && !ui2_headless ? {
 	import gg
 
 	__global g_scheduler_immediate_events = []string{}
@@ -43,8 +43,12 @@ $if (android || linux || freebsd || ((macos || windows) && ui2_custom_rendering 
 		mut app := &GgApp{ scheduler: new_frame_coordinator() }
 		g_gg_app = app
 		g_scroll_offsets_x = map[string]f64{}
-		g_scroll_viewports = { 'pane': rect(0, 0, 100, 80) }
-		g_scroll_content_w = { 'pane': 400.0 }
+		g_scroll_viewports = {
+			'pane': rect(0, 0, 100, 80)
+		}
+		g_scroll_content_w = {
+			'pane': 400.0
+		}
 		g_pending_scroll_x = map[string]f64{}
 		g_scroll_handler = unsafe { nil }
 		g_scheduler_immediate_events = []string{}

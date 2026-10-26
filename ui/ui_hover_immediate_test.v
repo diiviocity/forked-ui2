@@ -9,7 +9,7 @@ fn test_hover_transitions_report_nothing_for_an_unchanged_chain() {
 	assert left.len == 0 && entered.len == 0
 }
 
-$if (android || linux || freebsd || ((macos || windows) && ui2_custom_rendering ?)) && !ui2_headless ? {
+$if (android || linux || freebsd || openbsd || netbsd || dragonfly || ((macos || windows) && ui2_custom_rendering ?)) && !ui2_headless ? {
 	struct HoverLog {
 	mut:
 		events []string

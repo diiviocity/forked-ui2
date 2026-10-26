@@ -6,7 +6,7 @@
 @[has_globals]
 module ui2
 
-$if (android || linux || freebsd || ((macos || windows) && ui2_custom_rendering ?)) && !ui2_headless ? {
+$if (android || linux || freebsd || openbsd || netbsd || dragonfly || ((macos || windows) && ui2_custom_rendering ?)) && !ui2_headless ? {
 	import gg
 
 	const menubar_height = 26.0

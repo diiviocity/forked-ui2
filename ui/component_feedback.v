@@ -309,7 +309,7 @@ struct FeedbackPiece {
 // there. It gets scan-converted strips instead, which cost six vertices each;
 // the other renderers draw round cells, which they antialias.
 fn feedback_draws_strips() bool {
-	$if (android || linux || freebsd || ((macos || windows) && ui2_custom_rendering ?)) && !ui2_headless ? {
+	$if (android || linux || freebsd || openbsd || netbsd || dragonfly || ((macos || windows) && ui2_custom_rendering ?)) && !ui2_headless ? {
 		return true
 	} $else {
 		return false

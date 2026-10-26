@@ -487,7 +487,7 @@ pub fn control_support(kind Kind) BackendSupport {
 			.text_area, .checkbox { .partial }
 			else { .supported }
 		}
-	} $else $if android || linux {
+	} $else $if android || linux || freebsd || openbsd || netbsd || dragonfly {
 		return match kind {
 			.text_area, .dropdown { .partial }
 			else { .supported }
@@ -829,10 +829,10 @@ pub fn image(id string, path string, frame Rect) Element {
 // view.
 pub fn opengl(id string, frame Rect) Element {
 	return Element{
-		kind: .opengl
-		id: id
+		kind:  .opengl
+		id:    id
 		frame: frame
-		box: BoxStyle{
+		box:   BoxStyle{
 			transparent: true
 		}
 	}

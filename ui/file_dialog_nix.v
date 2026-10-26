@@ -1,3 +1,7 @@
+// The X11 and Wayland desktops have no single file-dialog API. zenity and
+// kdialog — the dialogs GNOME and KDE draw for their own apps, on Linux and
+// the BSDs alike — are driven instead, which keeps every ui2 binary free of
+// whole GTK or Qt.
 module ui2
 
 import os

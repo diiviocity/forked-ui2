@@ -4,7 +4,7 @@
 @[has_globals]
 module ui2
 
-$if (android || linux || freebsd || ((macos || windows) && ui2_custom_rendering ?)) && !ui2_headless ? {
+$if (android || linux || freebsd || openbsd || netbsd || dragonfly || ((macos || windows) && ui2_custom_rendering ?)) && !ui2_headless ? {
 	import fontstash
 	import gg
 	import math
@@ -321,7 +321,7 @@ $if (android || linux || freebsd || ((macos || windows) && ui2_custom_rendering 
 
 	pub fn bounds() Rect {
 		if g_gg_app.ctx == unsafe { nil } {
-			$if linux || macos || windows {
+			$if linux || freebsd || openbsd || netbsd || dragonfly || macos || windows {
 				return Rect{
 					width: 800
 					height: 600
@@ -348,7 +348,7 @@ $if (android || linux || freebsd || ((macos || windows) && ui2_custom_rendering 
 	}
 
 	pub fn run(build_fn BuildFn, event_fn EventFn) {
-		$if linux || macos || windows {
+		$if linux || freebsd || openbsd || netbsd || dragonfly || macos || windows {
 			run_window('App', 800, 600, build_fn, event_fn)
 		} $else {
 			run_window('App', 400, 800, build_fn, event_fn)
@@ -574,7 +574,9 @@ $if (android || linux || freebsd || ((macos || windows) && ui2_custom_rendering 
 		}
 		g_refresh_mode = mode
 		$if gg_record ? {
-		} $else $if linux {
+		} $else $if linux || freebsd || openbsd || netbsd || dragonfly {
+			// These run sokol's X11 loop, where the hooks below exist; the
+			// patched sokol_app.h compiles them for any __unix__ target.
 			if mode != .continuous {
 				g_present_on_demand = C.sapp_set_present_on_demand(true)
 				C.sapp_set_frame_deadline_cb(ui2_frame_deadline_cb)
@@ -1022,7 +1024,7 @@ $if (android || linux || freebsd || ((macos || windows) && ui2_custom_rendering 
 		// not draw are not presented, so the window keeps its last picture. Other
 		// backends repaint the retained tree on every callback.
 		$if gg_record ? {
-		} $else $if linux {
+		} $else $if linux || freebsd || openbsd || netbsd || dragonfly {
 			g_present_on_demand = g_refresh_mode != .continuous && C.sapp_set_present_on_demand(true)
 			// The deadline hook makes the X11 loop sleep until the earliest of
 			// the scheduler's next deadline, an X event or a sapp_wake, instead
