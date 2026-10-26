@@ -1209,20 +1209,11 @@ $if (android || linux || freebsd || openbsd || netbsd || dragonfly || ((macos ||
 			update_hover()
 		}
 		check_long_press()
-		// The atlas must be flushed once per frame, and gg.begin already does
-		// it: it uploads whatever glyphs the previous frame rasterized before
-		// this frame's sgl draw. A second flush here would attempt a second
-		// sg_update_image of the atlas within the same frame, which sokol
-		// rejects with VALIDATE_UPDIMG_ONCE.
+		// The atlas needs no flush here: gg's fontstash callbacks copy every
+		// rasterized glyph region the moment it lands (update_image_region),
+		// so nothing of this frame is left pending on the GPU side.
 		ctx.end()
 		app.scheduler.record_draw()
-		// Glyphs rasterized during this frame are not on the GPU yet; the next
-		// frame's gg.begin uploads them. In on-demand mode no frame follows an
-		// idle window, so ask for one redraw now — it lands the upload and
-		// replaces the stale-atlas frame, then the window goes idle again.
-		if g_gg_app.ctx.text_atlas_pending_upload() {
-			g_gg_app.scheduler.invalidate(.paint)
-		}
 		if g_present_on_demand {
 			// Idle callbacks present nothing, so the keep-alive measures idle time from the
 			// last frame that was presented.
@@ -1326,15 +1317,36 @@ $if (android || linux || freebsd || openbsd || netbsd || dragonfly || ((macos ||
 			}
 			.touches_began {
 				if e.num_touches > 0 {
+					// The primary touch answers the app's pointer hooks the
+					// way a mouse does, so embedders that decide over-video
+					// input themselves — vendetta wakes its controls on a
+					// pointer move — see taps too. ui2's own touch state
+					// machine takes the same event for its actions.
+					if voidptr(g_pointer_move_handler) != unsafe { nil } {
+						g_pointer_move_handler(f64(e.touches[0].pos_x), f64(e.touches[0].pos_y))
+					}
+					if voidptr(g_mouse_button_handler) != unsafe { nil } {
+						g_mouse_button_handler(0, true, f64(e.touches[0].pos_x), f64(e.touches[0].pos_y))
+					}
 					handle_touch_down(f64(e.touches[0].pos_x), f64(e.touches[0].pos_y))
 				}
 			}
 			.touches_moved {
 				if e.num_touches > 0 {
+					// Primary touch delivered like a drag, for the same
+					// reason .touches_began speaks to the pointer hook.
+					if voidptr(g_pointer_move_handler) != unsafe { nil } {
+						g_pointer_move_handler(f64(e.touches[0].pos_x), f64(e.touches[0].pos_y))
+					}
 					handle_touch_move(f64(e.touches[0].pos_x), f64(e.touches[0].pos_y))
 				}
 			}
 			.touches_ended {
+				if voidptr(g_mouse_button_handler) != unsafe { nil } {
+					x := if e.num_touches > 0 { e.touches[0].pos_x } else { g_touch.current_x }
+					y := if e.num_touches > 0 { e.touches[0].pos_y } else { g_touch.current_y }
+					g_mouse_button_handler(0, false, f64(x), f64(y))
+				}
 				if e.num_touches > 0 {
 					handle_touch_up(f64(e.touches[0].pos_x), f64(e.touches[0].pos_y))
 				} else {
