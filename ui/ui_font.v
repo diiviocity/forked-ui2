@@ -326,11 +326,17 @@ fn font_lookup(index map[string]string, family string, bold bool, italic bool) s
 // binary can look the same on a machine with nothing useful installed.
 fn font_bundle_dirs() []string {
 	exe_dir := os.dir(os.executable())
-	return [
+	mut dirs := [
 		os.join_path(exe_dir, 'fonts'),
 		os.join_path(exe_dir, 'assets', 'fonts'),
 		os.join_path(@VMODROOT, 'assets', 'fonts'),
 	]
+	$if android {
+		if unpacked := android_font_dir() {
+			dirs << unpacked
+		}
+	}
+	return dirs
 }
 
 // font_bundle_file returns the path of a font file shipped with the application

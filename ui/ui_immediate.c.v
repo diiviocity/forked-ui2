@@ -339,10 +339,16 @@ $if (android || linux || freebsd || openbsd || netbsd || dragonfly || ((macos ||
 		}
 	}
 
-	// scale is the display's DPI scale: framebuffer pixels divide by it to
-	// become layout pixels, the conversion between sapp's pixel height and
-	// bounds()'s layout rect. The two agree at scale 1.
+	// scale is the factor between framebuffer pixels and layout pixels: framebuffer
+	// pixels divide by it to become layout pixels, the conversion between sapp's
+	// pixel height and bounds()'s layout rect. It is the gg context's scale, which
+	// is the DPI scale on desktop and the fit of the design size to the
+	// framebuffer on Android, where sapp's own DPI scale is always 1. The two
+	// agree at scale 1.
 	pub fn scale() f64 {
+		if g_gg_app.ctx != unsafe { nil } {
+			return f64(g_gg_app.ctx.scale)
+		}
 		return f64(sapp.dpi_scale())
 	}
 
@@ -1086,6 +1092,9 @@ $if (android || linux || freebsd || openbsd || netbsd || dragonfly || ((macos ||
 		if app.scheduler.is_closed() || app.ctx == unsafe { nil } || app.draining_tasks {
 			return
 		}
+		$if android {
+			android_poll_file_dialog()
+		}
 		if !g_present_on_demand {
 			g_last_frame_ticks = time.ticks()
 		}
@@ -1224,6 +1233,71 @@ $if (android || linux || freebsd || openbsd || netbsd || dragonfly || ((macos ||
 		app.scheduler.set_animation_active(custom_animations_need_frame(app.declared_root))
 	}
 
+	// touch_to_layout maps a touch point from framebuffer pixels into the layout
+	// pixels every other pointer event already uses.
+	fn touch_to_layout(point gg.TouchPoint) (f64, f64) {
+		s := scale()
+		return f64(point.pos_x) / s, f64(point.pos_y) / s
+	}
+
+	// pointer_press_at handles a press of the pointer: a mouse button, or the
+	// first finger on a touch screen. Both take this one path, so the menu bar,
+	// the tooltip and the press handlers see a tap the way they see a click.
+	fn pointer_press_at(x f64, y f64, button int) {
+		if voidptr(g_mouse_button_handler) != unsafe { nil } {
+			g_mouse_button_handler(button, true, x, y)
+		}
+		g_tooltip.dismiss()
+		if menu_bar_handle_down(x, y) {
+			return
+		}
+		handle_touch_down(x, y)
+	}
+
+	// pointer_move_to handles a move of the pointer or of the first finger.
+	fn pointer_move_to(x f64, y f64) {
+		// Recorded before any handler below can claim the move, so the
+		// tooltip always knows where the pointer is.
+		g_tooltip.pointer_moved(x, y, renderer_now_ms())
+		if voidptr(g_pointer_move_handler) != unsafe { nil } {
+			g_pointer_move_handler(x, y)
+		}
+		g_hover_pointer = HoverPointer{
+			x: x
+			y: y
+			inside: true
+		}
+		update_hover()
+		if g_touch.down && g_touch.pointer_target.action_id.len > 0 {
+			handle_touch_move(x, y)
+			return
+		}
+		if menu_bar_handle_move(x, y) {
+			return
+		}
+		if g_open_dropdown.len > 0 {
+			update_dropdown_hover(x, y)
+		}
+		if g_touch.down {
+			handle_touch_move(x, y)
+		}
+	}
+
+	// pointer_release_at handles a release of the pointer or of the first finger.
+	fn pointer_release_at(x f64, y f64, button int) {
+		if voidptr(g_mouse_button_handler) != unsafe { nil } {
+			g_mouse_button_handler(button, false, x, y)
+		}
+		if g_touch.down && g_touch.pointer_target.action_id.len > 0 {
+			handle_touch_up(x, y)
+			return
+		}
+		if menu_bar_handle_up(x, y) {
+			return
+		}
+		handle_touch_up(x, y)
+	}
+
 	fn on_event(e &gg.Event, app &GgApp) {
 		mut state := unsafe { app }
 		if state.scheduler.is_closed() {
@@ -1240,41 +1314,10 @@ $if (android || linux || freebsd || openbsd || netbsd || dragonfly || ((macos ||
 		state.scheduler.invalidate(.build)
 		match e.typ {
 			.mouse_down {
-				if voidptr(g_mouse_button_handler) != unsafe { nil } {
-					g_mouse_button_handler(int(e.mouse_button), true, f64(e.mouse_x), f64(e.mouse_y))
-				}
-				g_tooltip.dismiss()
-				if menu_bar_handle_down(f64(e.mouse_x), f64(e.mouse_y)) {
-					return
-				}
-				handle_touch_down(f64(e.mouse_x), f64(e.mouse_y))
+				pointer_press_at(f64(e.mouse_x), f64(e.mouse_y), int(e.mouse_button))
 			}
 			.mouse_move {
-				// Recorded before any handler below can claim the move, so the
-				// tooltip always knows where the pointer is.
-				g_tooltip.pointer_moved(f64(e.mouse_x), f64(e.mouse_y), renderer_now_ms())
-				if voidptr(g_pointer_move_handler) != unsafe { nil } {
-					g_pointer_move_handler(f64(e.mouse_x), f64(e.mouse_y))
-				}
-				g_hover_pointer = HoverPointer{
-					x: f64(e.mouse_x)
-					y: f64(e.mouse_y)
-					inside: true
-				}
-				update_hover()
-				if g_touch.down && g_touch.pointer_target.action_id.len > 0 {
-					handle_touch_move(f64(e.mouse_x), f64(e.mouse_y))
-					return
-				}
-				if menu_bar_handle_move(f64(e.mouse_x), f64(e.mouse_y)) {
-					return
-				}
-				if g_open_dropdown.len > 0 {
-					update_dropdown_hover(f64(e.mouse_x), f64(e.mouse_y))
-				}
-				if g_touch.down {
-					handle_touch_move(f64(e.mouse_x), f64(e.mouse_y))
-				}
+				pointer_move_to(f64(e.mouse_x), f64(e.mouse_y))
 			}
 			.mouse_scroll {
 				// The content moves under a pointer that stays put, so whatever
@@ -1303,54 +1346,29 @@ $if (android || linux || freebsd || openbsd || netbsd || dragonfly || ((macos ||
 				update_hover()
 			}
 			.mouse_up {
-				if voidptr(g_mouse_button_handler) != unsafe { nil } {
-					g_mouse_button_handler(int(e.mouse_button), false, f64(e.mouse_x), f64(e.mouse_y))
-				}
-				if g_touch.down && g_touch.pointer_target.action_id.len > 0 {
-					handle_touch_up(f64(e.mouse_x), f64(e.mouse_y))
-					return
-				}
-				if menu_bar_handle_up(f64(e.mouse_x), f64(e.mouse_y)) {
-					return
-				}
-				handle_touch_up(f64(e.mouse_x), f64(e.mouse_y))
+				pointer_release_at(f64(e.mouse_x), f64(e.mouse_y), int(e.mouse_button))
 			}
+			// A touch screen's first finger is the pointer: it takes the mouse
+			// path above, so embedders that decide over-video input themselves
+			// see taps too.
 			.touches_began {
 				if e.num_touches > 0 {
-					// The primary touch answers the app's pointer hooks the
-					// way a mouse does, so embedders that decide over-video
-					// input themselves — vendetta wakes its controls on a
-					// pointer move — see taps too. ui2's own touch state
-					// machine takes the same event for its actions.
-					if voidptr(g_pointer_move_handler) != unsafe { nil } {
-						g_pointer_move_handler(f64(e.touches[0].pos_x), f64(e.touches[0].pos_y))
-					}
-					if voidptr(g_mouse_button_handler) != unsafe { nil } {
-						g_mouse_button_handler(0, true, f64(e.touches[0].pos_x), f64(e.touches[0].pos_y))
-					}
-					handle_touch_down(f64(e.touches[0].pos_x), f64(e.touches[0].pos_y))
+					x, y := touch_to_layout(e.touches[0])
+					pointer_press_at(x, y, 0)
 				}
 			}
 			.touches_moved {
 				if e.num_touches > 0 {
-					// Primary touch delivered like a drag, for the same
-					// reason .touches_began speaks to the pointer hook.
-					if voidptr(g_pointer_move_handler) != unsafe { nil } {
-						g_pointer_move_handler(f64(e.touches[0].pos_x), f64(e.touches[0].pos_y))
-					}
-					handle_touch_move(f64(e.touches[0].pos_x), f64(e.touches[0].pos_y))
+					x, y := touch_to_layout(e.touches[0])
+					pointer_move_to(x, y)
 				}
 			}
 			.touches_ended {
-				if voidptr(g_mouse_button_handler) != unsafe { nil } {
-					x := if e.num_touches > 0 { e.touches[0].pos_x } else { g_touch.current_x }
-					y := if e.num_touches > 0 { e.touches[0].pos_y } else { g_touch.current_y }
-					g_mouse_button_handler(0, false, f64(x), f64(y))
-				}
 				if e.num_touches > 0 {
-					handle_touch_up(f64(e.touches[0].pos_x), f64(e.touches[0].pos_y))
+					x, y := touch_to_layout(e.touches[0])
+					pointer_release_at(x, y, 0)
 				} else {
-					handle_touch_up(g_touch.current_x, g_touch.current_y)
+					pointer_release_at(g_touch.current_x, g_touch.current_y, 0)
 				}
 			}
 			.iconified, .suspended {
@@ -3440,6 +3458,8 @@ fn page_focused_text_area(direction int) {
 			sampler:    gfx.make_sampler(&gfx.SamplerDesc{
 				min_filter: .linear
 				mag_filter: .linear
+				wrap_u:     .clamp_to_edge
+				wrap_v:     .clamp_to_edge
 			})
 		}
 	}
@@ -3478,14 +3498,24 @@ fn page_focused_text_area(direction int) {
 
 	// draw_gl_surface_quad draws the texture over the element's frame. Texture rows run
 	// bottom-up, so the top edge of the frame takes the texture's top row at v = 1.
+	// The renderer takes framebuffer pixels, the way gg's own draw helpers hand
+	// it them: each layout coordinate is multiplied by the context's scale.
+	// Skipping that drew the surface at 1/scale of its frame.
+	// The quad covers exactly the texture's pixels, which are the frame's size
+	// rounded down, so the sampler never reads past the texture's edge.
 	fn draw_gl_surface_quad(ctx &gg.Context, tex GlSurfaceTexture, x f64, y f64, w f64, h f64) {
+		s := f64(ctx.scale)
+		x0 := x * s
+		y0 := y * s
+		x1 := x0 + f64(tex.width)
+		y1 := y0 + f64(tex.height)
 		ctx.r.enable_texture()
 		ctx.r.texture(tex.image, tex.sampler)
 		ctx.r.begin_quads()
-		ctx.r.v2f_t2f_c4f(f32(x), f32(y), 0, 1, 1, 1, 1, 1)
-		ctx.r.v2f_t2f_c4f(f32(x + w), f32(y), 1, 1, 1, 1, 1, 1)
-		ctx.r.v2f_t2f_c4f(f32(x + w), f32(y + h), 1, 0, 1, 1, 1, 1)
-		ctx.r.v2f_t2f_c4f(f32(x), f32(y + h), 0, 0, 1, 1, 1, 1)
+		ctx.r.v2f_t2f_c4f(f32(x0), f32(y0), 0, 1, 1, 1, 1, 1)
+		ctx.r.v2f_t2f_c4f(f32(x1), f32(y0), 1, 1, 1, 1, 1, 1)
+		ctx.r.v2f_t2f_c4f(f32(x1), f32(y1), 1, 0, 1, 1, 1, 1)
+		ctx.r.v2f_t2f_c4f(f32(x0), f32(y1), 0, 0, 1, 1, 1, 1)
 		ctx.r.end()
 		ctx.r.disable_texture()
 	}

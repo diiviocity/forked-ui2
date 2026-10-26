@@ -48,6 +48,24 @@ pub fn open_file_dialog(cfg FileDialogConfig) []string {
 	return native_file_dialog(open_file_dialog_config(cfg))
 }
 
+// FileDialogDoneFn receives the paths a request_file_dialog picked; an empty list
+// is a cancel.
+pub type FileDialogDoneFn = fn ([]string)
+
+// request_file_dialog opens the file picker and hands the chosen paths to on_done.
+// Where the platform's picker blocks the caller (the desktops), on_done runs
+// before this returns. On Android the picker returns to the app later, so the
+// request returns at once and on_done runs from the frame loop after the picker
+// has answered; blocking the frame thread there would stop the app from handling
+// input, and Android would close it.
+pub fn request_file_dialog(cfg FileDialogConfig, on_done FileDialogDoneFn) {
+	$if android {
+		android_request_file_dialog(cfg, on_done)
+	} $else {
+		on_done(open_file_dialog(cfg))
+	}
+}
+
 fn open_file_dialog_config(cfg FileDialogConfig) FileDialogConfig {
 	return FileDialogConfig{
 		kind:      .open
