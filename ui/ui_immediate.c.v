@@ -1209,14 +1209,20 @@ $if (android || linux || freebsd || openbsd || netbsd || dragonfly || ((macos ||
 			update_hover()
 		}
 		check_long_press()
-		// gg.begin flushes the PREVIOUS atlas. New glyphs (including tooltip
-		// sizes and worker text) must be uploaded before this frame's sgl draw.
-		// Flushing here also leaves the next gg.begin with no pending upload.
-		if ctx.font_inited {
-			ctx.ft.flush()
-		}
+		// The atlas must be flushed once per frame, and gg.begin already does
+		// it: it uploads whatever glyphs the previous frame rasterized before
+		// this frame's sgl draw. A second flush here would attempt a second
+		// sg_update_image of the atlas within the same frame, which sokol
+		// rejects with VALIDATE_UPDIMG_ONCE.
 		ctx.end()
 		app.scheduler.record_draw()
+		// Glyphs rasterized during this frame are not on the GPU yet; the next
+		// frame's gg.begin uploads them. In on-demand mode no frame follows an
+		// idle window, so ask for one redraw now — it lands the upload and
+		// replaces the stale-atlas frame, then the window goes idle again.
+		if g_gg_app.ctx.text_atlas_pending_upload() {
+			g_gg_app.scheduler.invalidate(.paint)
+		}
 		if g_present_on_demand {
 			// Idle callbacks present nothing, so the keep-alive measures idle time from the
 			// last frame that was presented.
