@@ -1296,6 +1296,8 @@ Typed-VML ports from `v-ui` include:
   and toggle their visibility and alignment.
 - `v run examples/cells/main.v` — edit a compact spreadsheet and recalculate
   dependent `sum` formulas.
+- `v run examples/pc_specs/main.v` — show basic machine specs in a striped
+  table with a Refresh button for live disk usage.
 - `v run examples/circle_drawer/main.v` — add and resize circles with
   selection-aware undo and redo.
 - `v run examples/gg2048/main.v` — play a deterministic, responsive version

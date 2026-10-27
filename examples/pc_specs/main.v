@@ -1,0 +1,130 @@
+module main
+
+import os
+import runtime
+import time
+import ui2
+
+const pc_specs_width = 720
+const pc_specs_height = 480
+const pc_specs_vml_source = $embed_file('pc_specs.vml').to_string()
+
+pub struct SpecRow {
+pub:
+	label string
+	value string
+pub mut:
+	index int
+}
+
+pub struct PcSpecsDemo {
+pub mut:
+	rows   []SpecRow
+	status string = 'Basic details about this machine.'
+}
+
+fn format_gigabytes(bytes u64) string {
+	return '${f64(bytes) / (1024 * 1024 * 1024):.1f} GB'
+}
+
+fn disk_path() string {
+	$if windows {
+		return 'C:\\'
+	}
+	return '/'
+}
+
+fn cpu_model() string {
+	$if linux {
+		content := os.read_file('/proc/cpuinfo') or { return 'Unknown' }
+		for line in content.split_into_lines() {
+			if line.starts_with('model name') && line.contains(':') {
+				value := line.all_after_first(':').trim_space()
+				if value.len > 0 {
+					return value
+				}
+			}
+		}
+		return 'Unknown'
+	}
+	$if macos {
+		return os.exec_opt(['sysctl', '-n', 'machdep.cpu.brand_string']) or {
+			return 'Unknown'
+		}.output.trim_space()
+	}
+	$if windows {
+		return os.exec_opt(['powershell', '-NoProfile', '-Command',
+			'(Get-CimInstance Win32_Processor).Name']) or {
+			return 'Unknown'
+		}.output.trim_space()
+	}
+	return 'Unknown'
+}
+
+fn total_memory() u64 {
+	$if linux {
+		content := os.read_file('/proc/meminfo') or { return 0 }
+		for line in content.split_into_lines() {
+			if line.starts_with('MemTotal:') {
+				amount := line.all_after(':').trim_space().split(' ')[0]
+				return amount.u64() * 1024
+			}
+		}
+		return 0
+	}
+	$if macos {
+		return os.exec_opt(['sysctl', '-n', 'hw.memsize']) or { return 0 }.output.trim_space().u64()
+	}
+	$if windows {
+		return os.exec_opt(['powershell', '-NoProfile', '-Command',
+			'(Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory']) or {
+			return 0
+		}.output.trim_space().u64()
+	}
+	return 0
+}
+
+fn collect_rows() []SpecRow {
+	uname := os.uname()
+	memory := total_memory()
+	path := disk_path()
+	mut rows := [
+		SpecRow{ label: 'Hostname', value: uname.nodename },
+		SpecRow{ label: 'Operating system', value: os.user_os() },
+		SpecRow{ label: 'Kernel', value: '${uname.sysname} ${uname.release}' },
+		SpecRow{ label: 'Architecture', value: uname.machine },
+		SpecRow{ label: 'CPU', value: cpu_model() },
+		SpecRow{ label: 'Logical cores', value: runtime.nr_jobs().str() },
+		SpecRow{
+			label: 'Total memory'
+			value: if memory > 0 { format_gigabytes(memory) } else { 'Unknown' }
+		},
+	]
+	if usage := os.disk_usage(path) {
+		rows << SpecRow{
+			label: 'Disk ${path}'
+			value: '${format_gigabytes(usage.available)} free of ${format_gigabytes(usage.total)}'
+		}
+	}
+	for index in 0 .. rows.len {
+		rows[index].index = index
+	}
+	return rows
+}
+
+pub fn (mut app PcSpecsDemo) refresh() {
+	app.rows = collect_rows()
+	app.status = 'Specs refreshed at ${time.now().format_ss()}.'
+}
+
+fn main() {
+	ui2.run_vml[PcSpecsDemo](
+		source: pc_specs_vml_source
+		model:  PcSpecsDemo{
+			rows: collect_rows()
+		}
+		title:  'PC Specs'
+		width:  pc_specs_width
+		height: pc_specs_height
+	) or { panic(err) }
+}
