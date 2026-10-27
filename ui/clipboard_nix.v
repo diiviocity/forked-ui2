@@ -7,7 +7,7 @@
 // iOS have their own bridge files, and Android the default fallback.
 module ui2
 
-$if linux || freebsd || openbsd || netbsd || dragonfly ? {
+$if linux || freebsd || openbsd || netbsd || dragonfly || solaris {
 	import os
 
 	struct LinuxClipboardTool {

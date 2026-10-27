@@ -144,7 +144,7 @@ const code_editor_appkit_tab_stop = 28.0 // NSParagraphStyle's default tab stops
 fn code_editor_overlays_on_top() bool {
 	$if ui2_custom_rendering ? {
 		return true
-	} $else $if linux || freebsd || openbsd || netbsd || dragonfly || android {
+	} $else $if linux || freebsd || openbsd || netbsd || dragonfly || solaris || android {
 		return true
 	} $else {
 		return false
@@ -183,7 +183,7 @@ fn code_editor_font_ems(family string) (f64, f64, f64) {
 fn code_editor_backend_line_height(style TextStyle) f64 {
 	$if ui2_custom_rendering ? {
 		return font_line_height(style.size)
-	} $else $if linux || freebsd || openbsd || netbsd || dragonfly || android {
+	} $else $if linux || freebsd || openbsd || netbsd || dragonfly || solaris || android {
 		return font_line_height(style.size)
 	} $else $if macos || ios {
 		asc, desc, lead := code_editor_font_ems(style.font_family)
@@ -216,7 +216,7 @@ pub fn code_editor_metrics(config CodeEditorConfig) CodeEditorMetrics {
 	}
 	$if ui2_custom_rendering ? {
 		return code_editor_custom_metrics(style, line_height, char_width)
-	} $else $if linux || freebsd || openbsd || netbsd || dragonfly || android {
+	} $else $if linux || freebsd || openbsd || netbsd || dragonfly || solaris || android {
 		return code_editor_custom_metrics(style, line_height, char_width)
 	} $else $if macos || ios {
 		return CodeEditorMetrics{

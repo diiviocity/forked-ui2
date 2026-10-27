@@ -6,7 +6,7 @@
 // and Android the default fallback.
 module ui2
 
-$if linux || freebsd || openbsd || netbsd || dragonfly ? {
+$if linux || freebsd || openbsd || netbsd || dragonfly || solaris {
 	import os
 
 	// linux_message_box_tool reports the helper this machine can show a dialog

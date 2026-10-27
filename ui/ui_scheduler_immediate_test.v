@@ -2,7 +2,7 @@
 @[has_globals]
 module ui2
 
-$if (android || linux || freebsd || openbsd || netbsd || dragonfly || ((macos || windows) && ui2_custom_rendering ?)) && !ui2_headless ? {
+$if (android || linux || freebsd || openbsd || netbsd || dragonfly || solaris || ((macos || windows) && ui2_custom_rendering ?)) && !ui2_headless ? {
 	import gg
 
 	__global g_scheduler_immediate_events = []string{}

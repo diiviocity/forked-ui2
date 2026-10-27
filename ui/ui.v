@@ -487,7 +487,7 @@ pub fn control_support(kind Kind) BackendSupport {
 			.text_area, .checkbox { .partial }
 			else { .supported }
 		}
-	} $else $if android || linux || freebsd || openbsd || netbsd || dragonfly {
+	} $else $if android || linux || freebsd || openbsd || netbsd || dragonfly || solaris {
 		return match kind {
 			.text_area, .dropdown { .partial }
 			else { .supported }

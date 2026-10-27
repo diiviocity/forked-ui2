@@ -5,7 +5,7 @@
 module ui2
 
 fn native_menu_bar_supported() bool {
-	$if (android || linux || freebsd || openbsd || netbsd || dragonfly) && !ui2_headless ? {
+	$if (android || linux || freebsd || openbsd || netbsd || dragonfly || solaris) && !ui2_headless ? {
 		return true
 	} $else {
 		return false
@@ -17,7 +17,7 @@ fn native_tray_supported() bool {
 }
 
 fn native_set_menu_bar(_menus []Menu) {
-	$if (android || linux || freebsd || openbsd || netbsd || dragonfly) && !ui2_headless ? {
+	$if (android || linux || freebsd || openbsd || netbsd || dragonfly || solaris) && !ui2_headless ? {
 		// Rebuild bounds and paint after replacing the menu declaration.
 		close_menu_bar()
 		// The drawn bar only exists during frames, so a call from a thread or

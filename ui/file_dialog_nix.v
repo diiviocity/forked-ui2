@@ -6,7 +6,7 @@
 // bridge files, and Android the default fallback.
 module ui2
 
-$if linux || freebsd || openbsd || netbsd || dragonfly ? {
+$if linux || freebsd || openbsd || netbsd || dragonfly || solaris {
 	import os
 
 	fn linux_file_dialog_tool() string {

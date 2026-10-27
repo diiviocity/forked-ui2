@@ -573,7 +573,7 @@ $if ui2_custom_rendering ? {
 }
 
 fn test_text_field_selection_text_uses_rune_offsets() {
-	$if (android || linux || freebsd || openbsd || netbsd || dragonfly || ((macos || windows) && ui2_custom_rendering ?)) && !ui2_headless ? {
+	$if (android || linux || freebsd || openbsd || netbsd || dragonfly || solaris || ((macos || windows) && ui2_custom_rendering ?)) && !ui2_headless ? {
 		before, selected := text_field_selection_text('a🙂bc', TextSelection{
 			anchor: 4
 			caret:  1
@@ -584,7 +584,7 @@ fn test_text_field_selection_text_uses_rune_offsets() {
 }
 
 fn test_text_field_selection_origin_respects_text_alignment() {
-	$if (android || linux || freebsd || openbsd || netbsd || dragonfly || ((macos || windows) && ui2_custom_rendering ?)) && !ui2_headless ? {
+	$if (android || linux || freebsd || openbsd || netbsd || dragonfly || solaris || ((macos || windows) && ui2_custom_rendering ?)) && !ui2_headless ? {
 		assert text_field_aligned_text_origin(10, 100, 40, .left) == 10
 		assert text_field_aligned_text_origin(10, 100, 40, .center) == 40
 		assert text_field_aligned_text_origin(10, 100, 40, .right) == 70

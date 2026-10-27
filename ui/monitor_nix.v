@@ -7,7 +7,7 @@
 // scope is spelled out here: macOS has no X11 and reads its own file, monitor_darwin.v.
 module ui2
 
-$if linux || freebsd || openbsd || netbsd || dragonfly ? {
+$if linux || freebsd || openbsd || netbsd || dragonfly || solaris {
 	#flag -lXrandr
 	#include <X11/extensions/Xrandr.h>
 

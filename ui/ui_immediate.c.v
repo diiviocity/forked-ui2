@@ -4,7 +4,7 @@
 @[has_globals]
 module ui2
 
-$if (android || linux || freebsd || openbsd || netbsd || dragonfly || ((macos || windows) && ui2_custom_rendering ?)) && !ui2_headless ? {
+$if (android || linux || freebsd || openbsd || netbsd || dragonfly || solaris || ((macos || windows) && ui2_custom_rendering ?)) && !ui2_headless ? {
 	import fontstash
 	import gg
 	import math
@@ -320,7 +320,7 @@ $if (android || linux || freebsd || openbsd || netbsd || dragonfly || ((macos ||
 
 	pub fn bounds() Rect {
 		if g_gg_app.ctx == unsafe { nil } {
-			$if linux || freebsd || openbsd || netbsd || dragonfly || macos || windows {
+			$if linux || freebsd || openbsd || netbsd || dragonfly || solaris || macos || windows {
 				return Rect{
 					width: 800
 					height: 600
@@ -353,7 +353,7 @@ $if (android || linux || freebsd || openbsd || netbsd || dragonfly || ((macos ||
 	}
 
 	pub fn run(build_fn BuildFn, event_fn EventFn) {
-		$if linux || freebsd || openbsd || netbsd || dragonfly || macos || windows {
+		$if linux || freebsd || openbsd || netbsd || dragonfly || solaris || macos || windows {
 			run_window('App', 800, 600, build_fn, event_fn)
 		} $else {
 			run_window('App', 400, 800, build_fn, event_fn)
@@ -579,7 +579,7 @@ $if (android || linux || freebsd || openbsd || netbsd || dragonfly || ((macos ||
 		}
 		g_refresh_mode = mode
 		$if gg_record ? {
-		} $else $if linux || freebsd || openbsd || netbsd || dragonfly {
+		} $else $if linux || freebsd || openbsd || netbsd || dragonfly || solaris {
 			// These run sokol's X11 loop, where the hooks below exist; the
 			// patched sokol_app.h compiles them for any __unix__ target.
 			if mode != .continuous {
@@ -1029,7 +1029,7 @@ $if (android || linux || freebsd || openbsd || netbsd || dragonfly || ((macos ||
 		// not draw are not presented, so the window keeps its last picture. Other
 		// backends repaint the retained tree on every callback.
 		$if gg_record ? {
-		} $else $if linux || freebsd || openbsd || netbsd || dragonfly {
+		} $else $if linux || freebsd || openbsd || netbsd || dragonfly || solaris {
 			g_present_on_demand = g_refresh_mode != .continuous && C.sapp_set_present_on_demand(true)
 			// The deadline hook makes the X11 loop sleep until the earliest of
 			// the scheduler's next deadline, an X event or a sapp_wake, instead

@@ -8,7 +8,7 @@ pub fn measure_layout_text(text string, style TextStyle, max_width f64) !LayoutS
 	layout_validate_text_measurement(style, max_width)!
 	$if macos && !ui2_custom_rendering ?&& !ui2_headless ? {
 		return layout_measure_appkit_text(text, style, max_width)
-	} $else $if (android || linux || freebsd || openbsd || netbsd || dragonfly || ((macos || windows) && ui2_custom_rendering ?)) && !ui2_headless ? {
+	} $else $if (android || linux || freebsd || openbsd || netbsd || dragonfly || solaris || ((macos || windows) && ui2_custom_rendering ?)) && !ui2_headless ? {
 		ctx := g_gg_app.ctx
 		if ctx != unsafe { nil } && ctx.font_inited {
 			ensure_symbol_fallbacks(ctx)
@@ -20,7 +20,7 @@ pub fn measure_layout_text(text string, style TextStyle, max_width f64) !LayoutS
 	return layout_measure_cpu_text(text, style, max_width)
 }
 
-$if (android || linux || freebsd || openbsd || netbsd || dragonfly || ((macos || windows) && ui2_custom_rendering ?)) && !ui2_headless ? {
+$if (android || linux || freebsd || openbsd || netbsd || dragonfly || solaris || ((macos || windows) && ui2_custom_rendering ?)) && !ui2_headless ? {
 	fn layout_measure_custom_text_area(text string, style TextStyle, max_width f64) !LayoutSize {
 		layout_validate_text_measurement(style, max_width)!
 		ctx := g_gg_app.ctx

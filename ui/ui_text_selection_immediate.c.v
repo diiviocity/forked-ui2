@@ -1,6 +1,6 @@
 module ui2
 
-$if (android || linux || freebsd || openbsd || netbsd || dragonfly || ((macos || windows) && ui2_custom_rendering ?)) && !ui2_headless ? {
+$if (android || linux || freebsd || openbsd || netbsd || dragonfly || solaris || ((macos || windows) && ui2_custom_rendering ?)) && !ui2_headless ? {
 	pub fn text_area_set_selection(id string, location int, length int) {
 		if id !in g_active_fields || (g_text_kinds[id] or { Kind.screen }) != .text_area {
 			return

@@ -26,7 +26,7 @@ pub:
 // does. Win32 and the Linux and BSD desktops render type at 96 dpi, AppKit and
 // UIKit at 72, so a declared size lines up with the native controls beside it.
 fn font_pixels_per_point() f64 {
-	$if linux || freebsd || openbsd || netbsd || dragonfly || windows {
+	$if linux || freebsd || openbsd || netbsd || dragonfly || solaris || windows {
 		return 96.0 / 72.0
 	} $else {
 		return 1.0
@@ -356,7 +356,7 @@ fn font_system_dirs() []string {
 	home := os.home_dir()
 	$if android {
 		return ['/system/fonts', '/data/fonts']
-	} $else $if linux || freebsd || openbsd || netbsd || dragonfly {
+	} $else $if linux || freebsd || openbsd || netbsd || dragonfly || solaris {
 		mut dirs := [
 			os.join_path(home, '.local', 'share', 'fonts'),
 			os.join_path(home, '.fonts'),
