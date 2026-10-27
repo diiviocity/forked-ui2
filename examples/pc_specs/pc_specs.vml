@@ -20,7 +20,7 @@ Screen {
             x: 18
             y: 58
             width: card.width - 36
-            height: 344
+            height: 310
             background: #E2E8F0
             corner_radius: 7
 

@@ -155,7 +155,6 @@ fn collect_rows() []SpecRow {
 			value: '${format_gigabytes(usage.available)} free of ${format_gigabytes(usage.total)}'
 		}
 	}
-	rows << SpecRow{ label: 'Refreshed', value: time.now().format_ss() }
 	for index in 0 .. rows.len {
 		rows[index].index = index
 	}
@@ -168,11 +167,15 @@ pub fn (mut app PcSpecsDemo) refresh() {
 }
 
 fn main() {
+	mut app := PcSpecsDemo{
+		rows: collect_rows()
+	}
+	// The bottom label carries the refresh date from the launch on: the model
+	// is built here, so the stamp matches the rows it belongs to.
+	app.status = 'Specs refreshed at ${time.now().format_ss()}.'
 	ui2.run_vml[PcSpecsDemo](
 		source: pc_specs_vml_source
-		model:  PcSpecsDemo{
-			rows: collect_rows()
-		}
+		model:  app
 		title:  'PC Specs'
 		width:  pc_specs_width
 		height: pc_specs_height
