@@ -16,7 +16,7 @@ fn find_pc_specs_element(element ui2.Element, id string) ?ui2.Element {
 
 fn test_pc_specs_collects_expected_rows() {
 	rows := collect_rows()
-	assert rows.len == 8
+	assert rows.len == 9
 	labels := rows.map(it.label)
 	assert labels[0] == 'Hostname'
 	assert labels[1] == 'Operating system'
@@ -26,6 +26,7 @@ fn test_pc_specs_collects_expected_rows() {
 	assert labels[5] == 'Logical cores'
 	assert labels[6] == 'Total memory'
 	assert labels[7].starts_with('Disk ')
+	assert labels[8] == 'Refreshed'
 	hostname := rows[0].value
 	assert hostname.len > 0
 	cores := rows[5].value.int()
@@ -37,8 +38,8 @@ fn test_pc_specs_collects_expected_rows() {
 }
 
 fn test_pc_specs_formats_gigabytes() {
-	assert format_gigabytes(u64(1024) * 1024 * 1024) == '1.0 GB'
-	assert format_gigabytes(u64(16) * 1024 * 1024 * 1024) == '16.0 GB'
+	assert format_gigabytes(u64(1024) * 1024 * 1024) == '1.0 GiB'
+	assert format_gigabytes(u64(16) * 1024 * 1024 * 1024) == '16.0 GiB'
 }
 
 fn test_pc_specs_refresh_updates_status() {
@@ -48,7 +49,7 @@ fn test_pc_specs_refresh_updates_status() {
 	app.status = ''
 	app.refresh()
 	assert app.status.starts_with('Specs refreshed at ')
-	assert app.rows.len == 8
+	assert app.rows.len == 9
 }
 
 fn test_pc_specs_vml_builds_table_rows() {

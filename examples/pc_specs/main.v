@@ -24,7 +24,7 @@ pub mut:
 }
 
 fn format_gigabytes(bytes u64) string {
-	return '${f64(bytes) / (1024 * 1024 * 1024):.1f} GB'
+	return '${f64(bytes) / (1024 * 1024 * 1024):.1f} GiB'
 }
 
 fn disk_path() string {
@@ -58,6 +58,25 @@ fn cpu_model() string {
 			return 'Unknown'
 		}.output.trim_space()
 	}
+	$if freebsd || netbsd || dragonfly || openbsd {
+		return os.exec_opt(['sysctl', '-n', 'hw.model']) or {
+			return 'Unknown'
+		}.output.trim_space()
+	}
+	$if solaris {
+		// kstat reports the CPU brand; the value follows the key and a tab.
+		out := os.exec_opt(['kstat', '-p', 'cpu_info:0:cpu_info0:brand']) or {
+			return 'Unknown'
+		}
+		fields := out.output.trim_space().split('\t')
+		if fields.len > 1 {
+			model := fields[1].trim_space()
+			if model.len > 0 {
+				return model
+			}
+		}
+		return 'Unknown'
+	}
 	return 'Unknown'
 }
 
@@ -81,7 +100,37 @@ fn total_memory() u64 {
 			return 0
 		}.output.trim_space().u64()
 	}
+	$if freebsd || netbsd || dragonfly || openbsd {
+		return os.exec_opt(['sysctl', '-n', 'hw.physmem']) or { return 0 }.output.trim_space().u64()
+	}
+	$if solaris {
+		// system_pages:physmem counts pages; the page size turns them into bytes.
+		out := os.exec_opt(['kstat', '-p', 'unix:0:system_pages:physmem']) or {
+			return 0
+		}
+		fields := out.output.trim_space().split('\t')
+		if fields.len > 1 {
+			return fields[1].trim_space().u64() * u64(os.page_size())
+		}
+		return 0
+	}
 	return 0
+}
+
+// os_description names the distribution on illumos, whose /etc/release says
+// more than uname's plain 'SunOS'.
+fn os_description() string {
+	$if solaris {
+		if lines := os.read_lines('/etc/release') {
+			for line in lines {
+				name := line.trim_space()
+				if name.len > 0 {
+					return name
+				}
+			}
+		}
+	}
+	return os.user_os()
 }
 
 fn collect_rows() []SpecRow {
@@ -90,7 +139,7 @@ fn collect_rows() []SpecRow {
 	path := disk_path()
 	mut rows := [
 		SpecRow{ label: 'Hostname', value: uname.nodename },
-		SpecRow{ label: 'Operating system', value: os.user_os() },
+		SpecRow{ label: 'Operating system', value: os_description() },
 		SpecRow{ label: 'Kernel', value: '${uname.sysname} ${uname.release}' },
 		SpecRow{ label: 'Architecture', value: uname.machine },
 		SpecRow{ label: 'CPU', value: cpu_model() },
@@ -106,6 +155,7 @@ fn collect_rows() []SpecRow {
 			value: '${format_gigabytes(usage.available)} free of ${format_gigabytes(usage.total)}'
 		}
 	}
+	rows << SpecRow{ label: 'Refreshed', value: time.now().format_ss() }
 	for index in 0 .. rows.len {
 		rows[index].index = index
 	}
