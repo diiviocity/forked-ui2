@@ -117,8 +117,8 @@ fn total_memory() u64 {
 	return 0
 }
 
-// os_description names the distribution on illumos, whose /etc/release says
-// more than uname's plain 'SunOS'.
+// os_description names the distribution: illumos says it in /etc/release,
+// Linux in /etc/os-release's PRETTY_NAME. The plain user_os falls back.
 fn os_description() string {
 	$if solaris {
 		if lines := os.read_lines('/etc/release') {
@@ -126,6 +126,18 @@ fn os_description() string {
 				name := line.trim_space()
 				if name.len > 0 {
 					return name
+				}
+			}
+		}
+	}
+	$if linux {
+		if lines := os.read_lines('/etc/os-release') {
+			for line in lines {
+				if line.starts_with('PRETTY_NAME=') {
+					name := line.all_after('=').trim_string_left('"').trim_string_right('"').trim_space()
+					if name.len > 0 {
+						return name
+					}
 				}
 			}
 		}
