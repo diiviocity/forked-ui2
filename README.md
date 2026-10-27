@@ -1386,7 +1386,7 @@ root, build an APK for an example:
 ```sh
 mkdir -p build/android
 vab --name "ui2 counter" --package-id io.vlang.ui2.counter \
-  -o build/android/counter.apk examples/counter
+  -o build/android/counter.apk examples/counter -f '-d sokol_gles3'
 ```
 
 Replace `counter` in the source path, output name, application name, and package
