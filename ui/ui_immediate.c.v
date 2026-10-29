@@ -181,6 +181,11 @@ $if (android || linux || freebsd || openbsd || netbsd || dragonfly || solaris ||
 	__global g_gg_app = &GgApp{}
 	__global g_refresh_mode = RefreshMode.on_demand
 	__global g_last_frame_ticks = i64(0)
+	// The UI scale pin (set_scale_override): 0 follows the platform's own.
+	__global g_scale_override = 0.0
+	// WindowOptions.background's memory: hidden windows keep running their
+	// frames instead of suspending.
+	__global g_background_work = false
 	// Reused by the rounded-corner drawing, so a frame's controls allocate no points.
 	__global g_outline_points = []f64{}
 	__global g_outline_outer = []f64{}
@@ -351,10 +356,46 @@ $if (android || linux || freebsd || openbsd || netbsd || dragonfly || solaris ||
 	// framebuffer on Android, where sapp's own DPI scale is always 1. The two
 	// agree at scale 1.
 	pub fn scale() f64 {
+		if g_scale_override > 0 {
+			return g_scale_override
+		}
 		if g_gg_app.ctx != unsafe { nil } {
 			return f64(g_gg_app.ctx.scale)
 		}
 		return f64(sapp.dpi_scale())
+	}
+
+	// apply_scale_override pins the gg context to the override's scale. gg
+	// rewrites ctx.scale from the platform's DPI on window events, so this
+	// re-runs on every event batch (on_event), on resize and once after the
+	// context is created.
+	fn apply_scale_override() {
+		if g_scale_override <= 0 {
+			return
+		}
+		mut ctx := g_gg_app.ctx
+		if ctx == unsafe { nil } {
+			return
+		}
+		ctx.scale = f32(g_scale_override)
+		if ctx.font_inited {
+			ctx.ft.scale = ctx.scale
+		}
+	}
+
+	// set_scale_override pins the layout scale for the whole window: the
+	// platform's own DPI is ignored while the value is above 0, and 0 returns
+	// to following it. The video surface scales with the chrome; surfaces
+	// rendered at the framebuffer's own resolution are unaffected.
+	pub fn set_scale_override(s f64) {
+		if s == g_scale_override {
+			return
+		}
+		g_scale_override = s
+		apply_scale_override()
+		if g_gg_app.ctx != unsafe { nil } {
+			g_gg_app.scheduler.invalidate(.surface)
+		}
 	}
 
 	pub fn run(build_fn BuildFn, event_fn EventFn) {
@@ -422,6 +463,16 @@ $if (android || linux || freebsd || openbsd || netbsd || dragonfly || solaris ||
 		sample_count int = 4
 		refresh    RefreshMode = .on_demand
 		gl_load    GlLoad = .auto
+	// background keeps the window's frames running while the window is
+	// hidden — iconified, minimized, or parked on another workspace — instead
+	// of suspending the frame coordinator. Nothing is presented while hidden;
+	// the frames exist so the application keeps its own machinery fed: a
+	// custom renderer whose surface is drained inside the frame (a video
+	// player's mpv render call, say) must keep consuming frames, or the
+	// source stalls and playback stops the moment the window is hidden.
+	// Windows that only show UI pay nothing for this — leave it off and a
+	// hidden window suspends, as before.
+		background bool
 	}
 
 // run_window_with_options opens the window with per-application control over
@@ -440,6 +491,7 @@ $if (android || linux || freebsd || openbsd || netbsd || dragonfly || solaris ||
 			g_gg_app = &GgApp{}
 		}
 		g_refresh_mode = opts.refresh
+		g_background_work = opts.background
 		// In manual mode gg suppresses the frame callback between asks, so the
 		// scheduler's wake hook revives it whenever new work, a running
 		// animation or an expired deadline needs a frame.
@@ -488,6 +540,7 @@ $if (android || linux || freebsd || openbsd || netbsd || dragonfly || solaris ||
 		if opts.refresh == .on_demand {
 			spawn idle_keepalive_waker()
 		}
+		apply_scale_override()
 		g_gg_app.ctx.run()
 	}
 
@@ -1163,7 +1216,10 @@ $if (android || linux || freebsd || openbsd || netbsd || dragonfly || solaris ||
 			app.declared_root = declared
 			app.has_root = true
 		}
-		if app.scheduler.is_closed() || app.iconified || app.suspended {
+		// A background window runs its frames while hidden (the drains and
+		// surface renders inside them are the point), so only a real suspend
+		// or a window without the option stops here.
+		if app.scheduler.is_closed() || app.suspended || (app.iconified && !g_background_work) {
 			return
 		}
 		// The animation pass returns the tree the build just validated with
@@ -1171,7 +1227,7 @@ $if (android || linux || freebsd || openbsd || netbsd || dragonfly || solaris ||
 		// revalidating the result would rescan the tree for no new information.
 		root := apply_custom_widget_animations(app.declared_root)
 		// Animation callbacks are user code and may close or suspend the window.
-		if app.scheduler.is_closed() || app.iconified || app.suspended {
+		if app.scheduler.is_closed() || app.suspended || (app.iconified && !g_background_work) {
 			return
 		}
 		// Image resources must be available before starting the GPU pass.
@@ -1228,9 +1284,11 @@ $if (android || linux || freebsd || openbsd || netbsd || dragonfly || solaris ||
 		// so nothing of this frame is left pending on the GPU side.
 		ctx.end()
 		app.scheduler.record_draw()
-		if g_present_on_demand {
-			// Idle callbacks present nothing, so the keep-alive measures idle time from the
-			// last frame that was presented.
+		// A hidden background window drew into its surfaces but presents
+		// nothing: the swap would land in an unmapped window and only spend
+		// the GPU's time. The keep-alive's clock keeps running from the last
+		// presented frame, so a window that comes back also repaints at once.
+		if g_present_on_demand && !(app.iconified && g_background_work) {
 			C.sapp_request_present()
 			g_last_frame_ticks = time.ticks()
 		}
@@ -1308,6 +1366,9 @@ $if (android || linux || freebsd || openbsd || netbsd || dragonfly || solaris ||
 		if state.scheduler.is_closed() {
 			return
 		}
+		// Window events (resize, DPI change) rewrite gg's own scale; the pin
+		// goes back on before anything reads it this batch.
+		apply_scale_override()
 		g_key_modifiers = KeyModifiers{
 			shift: e.modifiers & u32(gg.Modifier.shift) != 0
 			ctrl: e.modifiers & u32(gg.Modifier.ctrl) != 0
@@ -1382,7 +1443,14 @@ $if (android || linux || freebsd || openbsd || netbsd || dragonfly || solaris ||
 				} else {
 					state.suspended = true
 				}
-				state.scheduler.suspend()
+				// A background window keeps its frames running while hidden,
+				// so the application's own drains and render calls inside the
+				// frame keep going; only windows without the option suspend.
+				// A system suspend stops frames either way — that event says
+				// the machine itself is going away.
+				if !(e.typ == .iconified && g_background_work) {
+					state.scheduler.suspend()
+				}
 				g_tooltip.pointer_left()
 				cancel_touch()
 			}
