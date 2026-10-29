@@ -20,7 +20,9 @@ $if !ui2_custom_rendering ? {
 
 #flag windows -loleaut32
 
-#flag windows -luuid
+// the helper's own directory, for tcc_compat_windows.h (V inserts the helper into
+// the generated C file, so a quoted include needs the path)
+#flag windows -I @VMODROOT/windows
 
 #insert "@VMODROOT/windows/native_helpers_windows.h"
 

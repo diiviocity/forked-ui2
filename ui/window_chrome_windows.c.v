@@ -6,6 +6,7 @@ module ui2
 
 #flag windows -luser32
 #flag windows -lcomctl32
+#flag windows -I @VMODROOT/windows
 
 #insert "@VMODROOT/windows/window_chrome_windows.h"
 

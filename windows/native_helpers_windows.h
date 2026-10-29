@@ -22,13 +22,22 @@
 
 #include <windows.h>
 #include <windowsx.h>
+#ifdef __TINYC__
+// V's bundled tcc has no commctrl.h or oleacc.h: the names used are declared there.
+#include "tcc_compat_windows.h"
+#else
 #include <commctrl.h>
 #include <oleacc.h>
+#endif
 #include <oleauto.h>
 #include <shellapi.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <wchar.h>
+
+// IAccessible's interface id, spelled here so no compiler needs uuid.lib for it
+// (tcc has none; the other compilers would link it for this one GUID).
+static const IID ui2_iid_iaccessible = { 0x618736e0, 0x3c3d, 0x11cf, { 0x81, 0x0c, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71 } };
 
 #define UI2_WM_REFRESH (WM_APP + 77)
 #define UI2_WM_TRAY (WM_APP + 78)
@@ -242,9 +251,9 @@ static inline void ui2_win_notify_invoked(void *hwnd_ptr) {
 static inline LRESULT ui2_win_accessible_button_object(HWND hwnd, WPARAM wparam) {
 	IAccessible *accessible = NULL;
 	HRESULT result = CreateStdAccessibleProxyW(hwnd, L"BUTTON", OBJID_CLIENT,
-		&IID_IAccessible, (void **)&accessible);
+		&ui2_iid_iaccessible, (void **)&accessible);
 	if (FAILED(result) || accessible == NULL) return 0;
-	LRESULT object = LresultFromObject(&IID_IAccessible, wparam, (IUnknown *)accessible);
+	LRESULT object = LresultFromObject(&ui2_iid_iaccessible, wparam, (IUnknown *)accessible);
 	accessible->lpVtbl->Release(accessible);
 	return object;
 }
@@ -1024,7 +1033,7 @@ static inline unsigned int ui2_win_accessible_button_info(void *hwnd_ptr,
 	HWND hwnd = (HWND)hwnd_ptr;
 	if (hwnd == NULL) return 0;
 	IAccessible *accessible = NULL;
-	if (FAILED(AccessibleObjectFromWindow(hwnd, OBJID_CLIENT, &IID_IAccessible,
+	if (FAILED(AccessibleObjectFromWindow(hwnd, OBJID_CLIENT, &ui2_iid_iaccessible,
 			(void **)&accessible)) || accessible == NULL) {
 		return 0;
 	}
@@ -1072,7 +1081,7 @@ static inline int ui2_win_accessible_button_invoke(void *hwnd_ptr) {
 	HWND hwnd = (HWND)hwnd_ptr;
 	if (hwnd == NULL) return 0;
 	IAccessible *accessible = NULL;
-	if (FAILED(AccessibleObjectFromWindow(hwnd, OBJID_CLIENT, &IID_IAccessible,
+	if (FAILED(AccessibleObjectFromWindow(hwnd, OBJID_CLIENT, &ui2_iid_iaccessible,
 			(void **)&accessible)) || accessible == NULL) {
 		return 0;
 	}

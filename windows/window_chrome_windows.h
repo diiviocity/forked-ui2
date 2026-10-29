@@ -18,7 +18,12 @@
 #endif
 
 #include <windows.h>
+#ifdef __TINYC__
+// V's bundled tcc has no commctrl.h, and its winuser.h predates a metric used below.
+#include "tcc_compat_windows.h"
+#else
 #include <commctrl.h>
+#endif
 
 // The main window is this process's visible, unowned top-level window: ui2's own
 // UI2Window, or the window sokol made for a custom-rendered app.
