@@ -892,7 +892,7 @@ pub fn set_text(id string, value string) {
 	mut st := windows_state()
 	outer := st.views[id] or { return }
 	kind := st.view_kinds[id] or { Kind.view }
-	mut hwnd := outer
+	mut hwnd := voidptr(outer)
 	if kind == .label {
 		hwnd = C.ui2_win_label_text_hwnd(outer)
 	}
@@ -1346,7 +1346,7 @@ fn windows_layout_scroll(hwnd voidptr, el Element, key string) (int, int) {
 fn windows_create_element(parent voidptr, el Element, x_offset int, y_offset int) voidptr {
 	wide := el.text.to_wide()
 	boxed := label_needs_container(el)
-	mut host := parent
+	mut host := voidptr(parent)
 	mut x := int(el.frame.x) + x_offset
 	mut y := int(el.frame.y) + y_offset
 	mut container := voidptr(unsafe { nil })
@@ -1470,7 +1470,7 @@ fn windows_update_element(key string, hwnd voidptr, el Element, x_offset int, y_
 	C.ui2_win_enable(hwnd, windows_bool(el.enabled))
 	declared_changed := (st.node_declared_text[key] or { '' }) != el.text
 	// A held label draws with the control inside it; everything else draws with itself.
-	mut text_hwnd := hwnd
+	mut text_hwnd := voidptr(hwnd)
 	if el.kind == .label {
 		text_hwnd = C.ui2_win_label_text_hwnd(hwnd)
 	}
@@ -2433,7 +2433,7 @@ fn ui2_windows_control_key(hwnd voidptr, virtual_key u32) int {
 @[export: 'ui2_windows_context_menu']
 fn ui2_windows_context_menu(hwnd voidptr, screen_x int, screen_y int) int {
 	st := windows_state()
-	mut target := hwnd
+	mut target := voidptr(hwnd)
 	mut entries := []MenuEntry{}
 	for target != unsafe { nil } {
 		entries = st.menus[windows_handle_id(target)] or { []MenuEntry{} }
@@ -2465,7 +2465,7 @@ fn ui2_windows_context_menu(hwnd voidptr, screen_x int, screen_y int) int {
 @[export: 'ui2_windows_cursor']
 fn ui2_windows_cursor(hwnd voidptr) int {
 	st := windows_state()
-	mut target := hwnd
+	mut target := voidptr(hwnd)
 	for target != unsafe { nil } {
 		cursor := st.cursors[windows_handle_id(target)] or { 0 }
 		if cursor != 0 {
